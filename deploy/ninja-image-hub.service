@@ -1,0 +1,30 @@
+[Unit]
+Description=Ninja Image Hub (single-process control plane + one browser worker per account)
+Documentation=file:///opt/ninja-image-hub/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ninja
+Group=ninja
+WorkingDirectory=/opt/ninja-image-hub
+EnvironmentFile=/opt/ninja-image-hub/.env
+Environment=PYTHONUNBUFFERED=1
+# Exactly one Uvicorn process. Never add --reload or --workers >1: the queue, the crash
+# supervisor and the dispatch locks live in this process, and a second one corrupts them.
+ExecStart=/opt/ninja-image-hub/.venv/bin/python -m uvicorn app:app --host 127.0.0.1 --port 8081 --workers 1
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=45
+# Worker browsers are children of this process; stop them together, politely first.
+KillMode=mixed
+LimitNOFILE=65536
+NoNewPrivileges=true
+# Chromium needs a writable /tmp and /dev/shm; keep host namespaces for the browser.
+PrivateTmp=false
+# A 2-account box needs RAM for two headless-less Chrome instances (~0.8-1.3 GiB each).
+MemoryMax=6G
+
+[Install]
+WantedBy=multi-user.target

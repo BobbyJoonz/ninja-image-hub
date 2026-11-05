@@ -1,0 +1,28 @@
+{
+  "browser": "Chromium via managed Site preview",
+  "data": "Isolated sample accounts; no provider connected",
+  "viewports": {
+    "desktop": {
+      "css_width": 1440,
+      "document_scroll_width": 1425,
+      "overflow": false
+    },
+    "mobile": {
+      "css_width": 390,
+      "document_scroll_width": 375,
+      "overflow": false
+    }
+  },
+  "interactions": [
+    "Open overview",
+    "Open analytics",
+    "Open operations",
+    "Change target and save controls; audit row visible",
+    "Add sample account; account count incremented"
+  ],
+  "limits": [
+    "Responsive checks used an iframe with exact CSS viewport, not physical devices.",
+    "No real Plus login/generation tested.",
+    "Gallery file delivery verified through authenticated HTTP integration tests; preview gallery starts empty."
+  ]
+}

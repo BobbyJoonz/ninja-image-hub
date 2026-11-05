@@ -1,0 +1,574 @@
+"""Regression tests for the v0.6 hardening pass.
+
+Every test here covers a behaviour that was broken in v0.5: the JS MIME mapping, parent
+secrets leaking into the third-party worker environment, a pre-send probe failure
+discarding a job, missing SQLite WAL, non-ASCII passphrases raising HTTP 500, a crashed
+worker never coming back, and a non-reproducible preview build.
+"""
+import importlib
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+from fastapi.testclient import TestClient
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+
+def _build(monkeypatch, tmp_path, password="example-passphrase-123456789", db_url=None):
+    monkeypatch.setenv("ADMIN_PASSWORD", password)
+    monkeypatch.setenv("APP_SECRET", "a" * 64)
+    monkeypatch.setenv("AGENT_API_KEY", "test-agent-key-98765")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("DATABASE_URL", db_url or "sqlite:///" + str(tmp_path / "hub.db"))
+    sys.modules.pop("app", None)
+    module = importlib.import_module("app")
+    ctx = module.app.state.hub
+    ctx.app = module.app
+    # Hardening tests must never launch a real gateway/browser, even on a machine where
+    # vendor/ is installed. Tests that exercise supervision opt in explicitly.
+    ctx.runtime_installed = lambda: False
+    return module, ctx
+
+
+@pytest.fixture()
+def loaded(tmp_path, monkeypatch):
+    module, ctx = _build(monkeypatch, tmp_path)
+    with TestClient(module.app) as client:
+        yield client, ctx
+    ctx.engine.dispose()
+    sys.modules.pop("app", None)
+
+
+def auth(client, password="example-passphrase-123456789"):
+    res = client.post("/api/auth/login", json={"password": password})
+    assert res.status_code == 200, res.text
+    return {"x-csrf-token": res.json()["csrf"]}
+
+
+def test_static_javascript_is_served_with_javascript_mime(loaded):
+    """v0.5 regression: on Windows .js resolved to text/plain, so the SPA never booted."""
+    client, _ = loaded
+    for path in ("/static/app.js", "/static/modules/state.js", "/static/modules/views.js"):
+        res = client.get(path)
+        assert res.status_code == 200, path
+        assert res.headers["content-type"].startswith("text/javascript"), (
+            path,
+            res.headers["content-type"],
+        )
+    css = client.get("/static/style.css")
+    assert css.headers["content-type"].startswith("text/css")
+
+
+def test_health_endpoint_is_public_and_leaks_no_paths(loaded):
+    client, _ = loaded
+    res = client.get("/api/health")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["ok"] is True and body["version"].startswith("0.6")
+    assert isinstance(body["gateway_installed"], bool)
+    assert "data_path" not in res.text and "gateway_path" not in res.text
+    assert "api_secret" not in res.text
+
+
+def test_non_ascii_admin_password_authenticates_instead_of_500(tmp_path, monkeypatch):
+    """compare_digest(str) raised TypeError for non-ASCII passwords."""
+    password = "رمز-عبور-فارسی-۱۲۳۴۵۶۷۸"
+    module, ctx = _build(monkeypatch, tmp_path, password=password)
+    with TestClient(module.app) as client:
+        assert client.post("/api/auth/login", json={"password": "wrong-passphrase"}).status_code == 401
+        res = client.post("/api/auth/login", json={"password": password})
+        assert res.status_code == 200, res.text
+        assert res.json()["csrf"]
+    ctx.engine.dispose()
+    sys.modules.pop("app", None)
+
+
+def test_worker_env_excludes_parent_secrets(monkeypatch):
+    """The third-party Node gateway must not inherit Hub secrets."""
+    from types import SimpleNamespace
+
+    from hub.workers import worker_env
+
+    monkeypatch.setenv("APP_SECRET", "super-secret-app-value")
+    monkeypatch.setenv("ADMIN_PASSWORD", "super-secret-admin-password")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@host/db")
+    monkeypatch.setenv("AGENT_API_KEY", "agent-key-value")
+    ctx = SimpleNamespace(
+        VENDOR=Path("/vendor/gateway"),
+        setting=lambda key: {"gateway_max_tabs": 3, "max_batch_images": 4}[key],
+    )
+    acc = {"port": 41005, "api_secret": "worker-secret"}
+    env = worker_env(ctx, acc)
+    for leaked in ("APP_SECRET", "ADMIN_PASSWORD", "DATABASE_URL", "AGENT_API_KEY"):
+        assert leaked not in env, leaked
+    assert env["PORT"] == "41005" and env["API_KEY"] == "worker-secret"
+    assert env["NODE_PATH"].endswith("node_modules")
+    assert env["HEADLESS"] == "false"
+
+
+def test_unsent_job_is_requeued_not_failed(loaded, monkeypatch):
+    """A health blip before submission must not terminally fail a job."""
+    client, ctx = loaded
+    h = auth(client)
+    acc = client.post("/api/accounts", json={"name": "Probe", "autostart": False}, headers=h).json()
+    job = client.post(
+        "/api/generate",
+        json={"account_id": acc["id"], "prompt": "requeue me", "aspect_ratio": "1:1"},
+        headers=h,
+    ).json()
+    jid = job["id"]
+    from sqlalchemy import update
+
+    with ctx.engine.begin() as conn:
+        conn.execute(
+            update(ctx.jobs)
+            .where(ctx.jobs.c.id == jid)
+            .values(status="running", started_at=ctx.now())
+        )
+    monkeypatch.setattr(ctx, "process_state", lambda account: "stopped")
+    monkeypatch.setattr(ctx, "upstream_probe", lambda account: False)
+    ctx.execute_job(jid, ctx.query_account(acc["id"]), "requeue me", "1:1", "best", 1)
+    assert client.get(f"/api/jobs/{jid}").json()["status"] == "queued"
+
+
+def _isolate_scheduler(ctx):
+    """Stop the live dispatcher so manual supervisor calls are not raced by its thread.
+
+    The background scheduler also supervises workers; on a machine where the gateway is
+    really installed it can consume the restart state before the test looks at it.
+    """
+    import threading
+
+    ctx.stop_scheduler()
+    ctx.queue_stop = threading.Event()  # unset: manual calls must proceed
+
+
+def test_crashed_worker_is_restarted_with_backoff(loaded, monkeypatch):
+    client, ctx = loaded
+    h = auth(client)
+    _isolate_scheduler(ctx)
+    acc = client.post(
+        "/api/accounts",
+        json={"name": "Supervised", "autostart": True},
+        headers=h,
+    ).json()
+    started = []
+    monkeypatch.setattr(
+        ctx, "start_worker_async", lambda account, **kw: started.append(account["id"])
+    )
+    monkeypatch.setattr(ctx, "runtime_installed", lambda: True)
+    ctx.worker_restart_state.clear()
+    assert ctx._supervise_workers() == 1
+    assert started == [acc["id"]]
+    # Immediate second tick is inside the backoff window.
+    assert ctx._supervise_workers() == 0
+    assert started == [acc["id"]]
+    # An operator stop must not be resurrected.
+    ctx.worker_restart_state.clear()
+    ctx.suppressed_workers.add(acc["id"])
+    assert ctx._supervise_workers() == 0
+    ctx.suppressed_workers.discard(acc["id"])
+
+
+def test_sqlite_runs_in_wal_mode(loaded):
+    _, ctx = loaded
+    with ctx.engine.connect() as conn:
+        assert str(conn.exec_driver_sql("PRAGMA journal_mode").scalar()).lower() == "wal"
+
+
+def test_preview_build_is_byte_reproducible(tmp_path):
+    """v0.5 regression: build.py used the locale encoding and rewrote CRLF on Windows."""
+    import shutil
+
+    shutil.copytree(ROOT / "frontend", tmp_path / "frontend")
+    (tmp_path / "preview").mkdir()
+    shutil.copy2(ROOT / "preview" / "build.py", tmp_path / "preview" / "build.py")
+    shutil.copy2(ROOT / "preview" / "demo.js", tmp_path / "preview" / "demo.js")
+    subprocess.run(
+        [sys.executable, str(tmp_path / "preview" / "build.py")],
+        check=True,
+        capture_output=True,
+    )
+    rebuilt = (tmp_path / "preview" / "dist" / "index.html").read_bytes()
+    assert rebuilt == (ROOT / "preview" / "dist" / "index.html").read_bytes()
+    for name in ("app.js", "style.css", "modules/views.js"):
+        assert (tmp_path / "preview" / "dist" / "static" / name).read_bytes() == (
+            ROOT / "frontend" / name
+        ).read_bytes(), name
+
+
+def test_prepare_gateway_installs_browser_binaries():
+    """npm ci alone leaves the worker unable to launch a browser."""
+    script = (ROOT / "scripts" / "prepare_gateway.py").read_text(encoding="utf-8")
+    assert '"npm"' in script and '"ci"' in script
+    assert "playwright" in script and "install" in script
+    assert "patchright" in script
+    assert "--skip-browsers" in script
+    # github.com is blocked on some networks; the codeload fallback keeps install possible.
+    assert "codeload.github.com" in script
+
+
+def test_doctor_console_print_survives_unicode_and_bom():
+    """A BOM in PINNED_COMMIT.txt used to crash doctor with UnicodeEncodeError (cp1252)."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "doctor_module", ROOT / "scripts" / "doctor.py"
+    )
+    doctor = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(doctor)
+    doctor.record("ok", "gateway revision", "tarball refs/heads/main \ufeff", "fix")
+    assert doctor._console("\ufeffabc").endswith("abc")
+
+
+class _FakeProc:
+    """Minimal stand-in for a subprocess.Popen in worker-lifecycle tests."""
+
+    pid = 424242
+
+    def __init__(self):
+        self.terminated = False
+
+    def poll(self):
+        return None
+
+    def terminate(self):
+        self.terminated = True
+
+    def kill(self):
+        self.terminated = True
+
+    def wait(self, timeout=None):
+        return 0
+
+
+def _settings(**values):
+    return lambda key: values.get(key, 0)
+
+
+def test_idle_reaper_stops_a_worker_but_never_an_operator_stop(loaded, monkeypatch):
+    client, ctx = loaded
+    _isolate_scheduler(ctx)
+    h = auth(client)
+    acc = client.post("/api/accounts", json={"name": "Idle", "autostart": False}, headers=h).json()
+    aid = acc["id"]
+    monkeypatch.setattr(ctx, "setting", _settings(idle_worker_shutdown_minutes=1))
+    proc = _FakeProc()
+    ctx.processes[aid] = proc
+    ctx.account_activity[aid] = 0.0  # long idle (monotonic clock is large)
+    assert ctx._reap_idle_workers() == 1
+    assert proc.terminated is True
+    assert aid not in ctx.processes
+    assert aid in ctx.idle_stopped
+    assert aid not in ctx.suppressed_workers  # reaped, not an operator stop
+
+
+def test_idle_reaper_keeps_busy_account(loaded, monkeypatch):
+    client, ctx = loaded
+    _isolate_scheduler(ctx)
+    h = auth(client)
+    acc = client.post("/api/accounts", json={"name": "Busy", "autostart": False}, headers=h).json()
+    aid = acc["id"]
+    monkeypatch.setattr(ctx, "setting", _settings(idle_worker_shutdown_minutes=1))
+    ctx.processes[aid] = _FakeProc()
+    ctx.account_activity[aid] = 0.0
+    ctx.active_per_account[aid] = 1
+    assert ctx._reap_idle_workers() == 0
+    ctx.active_per_account[aid] = 0
+    assert aid in ctx.processes
+
+
+def test_idle_reaper_is_disabled_by_zero(loaded, monkeypatch):
+    client, ctx = loaded
+    _isolate_scheduler(ctx)
+    h = auth(client)
+    acc = client.post("/api/accounts", json={"name": "AlwaysOn", "autostart": False}, headers=h).json()
+    aid = acc["id"]
+    monkeypatch.setattr(ctx, "setting", _settings(idle_worker_shutdown_minutes=0))
+    ctx.processes[aid] = _FakeProc()
+    ctx.account_activity[aid] = 0.0
+    assert ctx._reap_idle_workers() == 0
+    assert aid in ctx.processes
+
+
+def test_queued_job_wakes_an_idle_reaped_worker(loaded, monkeypatch):
+    client, ctx = loaded
+    _isolate_scheduler(ctx)
+    h = auth(client)
+    acc = client.post("/api/accounts", json={"name": "OnDemand", "autostart": False}, headers=h).json()
+    aid = acc["id"]
+    client.post(
+        "/api/generate",
+        json={"account_id": aid, "prompt": "wake me up", "aspect_ratio": "1:1"},
+        headers=h,
+    )
+    woken = []
+    monkeypatch.setattr(ctx, "wake_worker_async", lambda a, **k: woken.append(a["id"]) or True)
+    ctx.idle_stopped.add(aid)
+    ctx.suppressed_workers.add(aid)
+    assert ctx._wake_for_queue() == 1
+    assert woken == [aid]
+
+
+def test_operator_stopped_account_with_queued_job_is_not_woken(loaded, monkeypatch):
+    client, ctx = loaded
+    _isolate_scheduler(ctx)
+    h = auth(client)
+    acc = client.post("/api/accounts", json={"name": "Stopped", "autostart": False}, headers=h).json()
+    aid = acc["id"]
+    client.post(
+        "/api/generate",
+        json={"account_id": aid, "prompt": "leave me queued", "aspect_ratio": "1:1"},
+        headers=h,
+    )
+    ctx.suppressed_workers.add(aid)
+    ctx.idle_stopped.discard(aid)
+    woken = []
+    monkeypatch.setattr(ctx, "wake_worker_async", lambda a, **k: woken.append(a["id"]) or True)
+    assert ctx._wake_for_queue() == 0
+    assert woken == []
+
+
+def test_wake_worker_async_clears_markers_and_cools_down(loaded, monkeypatch):
+    client, ctx = loaded
+    _isolate_scheduler(ctx)
+    acc = client.post("/api/accounts", json={"name": "Wake", "autostart": False}, headers=auth(client)).json()
+    aid = acc["id"]
+    started = []
+    monkeypatch.setattr(ctx, "start_worker_async", lambda a, **k: started.append(a["id"]))
+    ctx.idle_stopped.add(aid)
+    ctx.suppressed_workers.add(aid)
+    ctx.wake_state.clear()
+    assert ctx.wake_worker_async(ctx.query_account(aid)) is True
+    assert started == [aid]
+    assert aid not in ctx.idle_stopped and aid not in ctx.suppressed_workers
+    # Immediate second wake is inside the cooldown window.
+    assert ctx.wake_worker_async(ctx.query_account(aid)) is False
+    assert started == [aid]
+
+
+def test_idle_shutdown_setting_validates_and_persists(loaded):
+    client, _ = loaded
+    h = auth(client)
+    assert client.patch("/api/control", json={"idle_worker_shutdown_minutes": 2000}, headers=h).status_code == 422
+    res = client.patch("/api/control", json={"idle_worker_shutdown_minutes": 15}, headers=h)
+    assert res.status_code == 200, res.text
+    assert res.json()["config"]["idle_worker_shutdown_minutes"] == 15
+    assert client.get("/api/settings").json()["idle_worker_shutdown_minutes"] == 15
+
+
+def test_orphan_reclaim_is_scoped_and_skipped_when_port_is_free(loaded, monkeypatch):
+    """A hard-killed panel leaves a gateway behind; reclaim must only touch our own."""
+    from hub.workers import reclaim_orphan_worker
+
+    client, ctx = loaded
+    acc = client.post("/api/accounts", json={"name": "Orphan", "autostart": False}, headers=auth(client)).json()
+    monkeypatch.setattr(ctx, "port_available", lambda port: True)
+    assert reclaim_orphan_worker(ctx, ctx.query_account(acc["id"])) is False
+
+
+def test_wake_backoff_state_escalates(loaded, monkeypatch):
+    client, ctx = loaded
+    _isolate_scheduler(ctx)
+    acc = client.post("/api/accounts", json={"name": "Backoff", "autostart": False}, headers=auth(client)).json()
+    aid = acc["id"]
+    ctx.wake_state.clear()
+    monkeypatch.setattr(ctx, "start_worker_async", lambda a, **k: None)
+    assert ctx.wake_worker_async(ctx.query_account(aid)) is True
+    first = ctx.wake_state[aid]["next"]
+    assert ctx.wake_worker_async(ctx.query_account(aid)) is False  # inside cooldown
+    ctx.wake_state[aid]["next"] = 0.0
+    assert ctx.wake_worker_async(ctx.query_account(aid)) is True
+    assert ctx.wake_state[aid]["attempts"] == 2
+    assert ctx.wake_state[aid]["next"] > first
+
+
+def test_ram_guard_refuses_a_new_worker_instead_of_oom(loaded, monkeypatch):
+    """With 10 accounts a single OOM kills everything; the guard must refuse the start."""
+    import psutil
+
+    client, ctx = loaded
+    h = auth(client)
+    acc = client.post("/api/accounts", json={"name": "RamGuard", "autostart": False}, headers=h).json()
+    monkeypatch.setattr(ctx, "runtime_installed", lambda: True)
+    monkeypatch.setattr(ctx, "ensure_worker_copy", lambda account: "never reached")
+    monkeypatch.setattr(
+        ctx, "setting", _settings(min_free_memory_mb=600, max_running_accounts=10)
+    )
+    fake = type("VM", (), {"available": 100 * 1024 * 1024})()
+    monkeypatch.setattr(psutil, "virtual_memory", lambda: fake)
+    with pytest.raises(RuntimeError) as excinfo:
+        ctx.start_worker(ctx.query_account(acc["id"]))
+    assert "Not enough free RAM" in str(excinfo.value)
+
+
+def test_global_inflight_cap_is_32_and_validated(loaded):
+    client, _ = loaded
+    h = auth(client)
+    assert client.patch("/api/control", json={"global_max_inflight": 33}, headers=h).status_code == 422
+    res = client.patch("/api/control", json={"global_max_inflight": 10}, headers=h)
+    assert res.status_code == 200
+    assert res.json()["config"]["global_max_inflight"] == 10
+
+
+def test_job_pool_can_hold_the_maximum_global_cap(loaded):
+    _, ctx = loaded
+    assert ctx.pool._max_workers >= 32
+    assert ctx.health_pool._max_workers >= 10
+
+
+def test_worker_command_gives_every_linux_worker_its_own_xvfb():
+    """A headed browser on a server needs a virtual display — one per worker, never shared."""
+    from hub.workers import display_mode, worker_command
+
+    no_tools = lambda name: None  # noqa: E731
+    xvfb = lambda name: "/usr/bin/xvfb-run"  # noqa: E731
+
+    assert display_mode("win32", which=no_tools, env={}) == "desktop"
+    assert worker_command("win32", which=no_tools, env={}) == ["node", "src/server.js"]
+    assert display_mode("linux", which=xvfb, env={}) == "xvfb"
+    command = worker_command("linux", which=xvfb, env={})
+    assert command[:2] == ["xvfb-run", "-a"]
+    assert command[-2:] == ["node", "src/server.js"]
+    # A real X11 display (VNC/desktop) is used as-is.
+    assert display_mode("linux", which=xvfb, env={"DISPLAY": ":99"}) == "x11"
+    assert worker_command("linux", which=xvfb, env={"DISPLAY": ":99"}) == [
+        "node",
+        "src/server.js",
+    ]
+    # No display and no Xvfb must be reported as a hard failure, not a silent headless run.
+    assert display_mode("linux", which=no_tools, env={}) == "missing"
+
+
+def test_linux_deploy_assets_exist_and_are_consistent():
+    service = (ROOT / "deploy" / "ninja-image-hub.service").read_text(encoding="utf-8")
+    installer = (ROOT / "deploy" / "install_linux.sh").read_text(encoding="utf-8")
+    exec_line = next(
+        line for line in service.splitlines() if line.startswith("ExecStart=")
+    )
+    assert "--workers 1" in exec_line and "--reload" not in exec_line
+    assert "EnvironmentFile=" in service and "ninja-image-hub" in service
+    assert "xvfb" in installer
+    assert "google-chrome" in installer
+    assert "prepare_gateway.py" in installer
+    assert "systemctl" in installer
+    doc = (ROOT / "docs" / "DEPLOY_LINUX_FA.md").read_text(encoding="utf-8")
+    assert "Open ChatGPT" in doc and "Save Session" in doc
+
+
+def test_doctor_reports_actionable_status(tmp_path):
+    """Run a copy of doctor.py in an empty tree so the real .env/vendor cannot hide FAILs."""
+    import shutil
+
+    repo = tmp_path / "repo"
+    (repo / "scripts").mkdir(parents=True)
+    shutil.copy2(ROOT / "scripts" / "doctor.py", repo / "scripts" / "doctor.py")
+    env = dict(os.environ)
+    env.pop("APP_SECRET", None)
+    env.pop("ADMIN_PASSWORD", None)
+    env["DATA_DIR"] = str(tmp_path / "doctor-data")
+    result = subprocess.run(
+        [sys.executable, str(repo / "scripts" / "doctor.py"), "--json"],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=str(repo),
+    )
+    # --json must be pipeable: the whole stdout is one JSON document.
+    payload = json.loads(result.stdout)
+    assert payload["ok"] is False
+    names = {item["name"] for item in payload["failures"]}
+    assert "gateway" in names or "env file" in names
+    assert result.returncode == 1
+
+
+def test_non_ascii_csrf_header_is_403_not_500(loaded):
+    """A non-ASCII header value used to raise TypeError inside compare_digest -> 500."""
+    client, _ = loaded
+    h = auth(client)
+    raw = h["x-csrf-token"].encode("ascii")[:-1] + b"\xe9"
+    res = client.post(
+        "/api/accounts",
+        json={"name": "non-ascii csrf"},
+        headers={"x-csrf-token": raw},
+    )
+    assert res.status_code == 403, res.text
+
+
+def test_lone_surrogate_password_is_401_not_500(loaded):
+    """A lone surrogate JSON escape used to raise UnicodeEncodeError -> 500."""
+    client, _ = loaded
+    res = client.post(
+        "/api/auth/login",
+        content=b'{"password":"\\ud800"}',
+        headers={"content-type": "application/json"},
+    )
+    assert res.status_code == 401, res.text
+
+
+def test_sqlalchemy_pysqlite_url_still_gets_wal(tmp_path, monkeypatch):
+    url = "sqlite+pysqlite:///" + str(tmp_path / "explicit.db").replace("\\", "/")
+    module, ctx = _build(monkeypatch, tmp_path, db_url=url)
+    with TestClient(module.app):
+        with ctx.engine.connect() as conn:
+            mode = conn.exec_driver_sql("PRAGMA journal_mode").scalar()
+    assert str(mode).lower() == "wal"
+    ctx.engine.dispose()
+    sys.modules.pop("app", None)
+
+
+def test_in_memory_sqlite_is_usable(tmp_path, monkeypatch):
+    module, ctx = _build(monkeypatch, tmp_path, db_url="sqlite:///:memory:")
+    with TestClient(module.app) as client:
+        res = client.get("/api/health")
+        assert res.status_code == 200 and res.json()["ok"] is True
+    ctx.engine.dispose()
+    sys.modules.pop("app", None)
+
+
+def test_supervisor_gives_up_after_max_attempts(loaded, monkeypatch):
+    from hub.scheduler import MAX_RESTART_ATTEMPTS
+
+    client, ctx = loaded
+    h = auth(client)
+    _isolate_scheduler(ctx)
+    acc = client.post(
+        "/api/accounts", json={"name": "Broken", "autostart": True}, headers=h
+    ).json()
+    started = []
+    monkeypatch.setattr(ctx, "runtime_installed", lambda: True)
+    monkeypatch.setattr(
+        ctx, "start_worker_async", lambda a, **k: started.append(a["id"])
+    )
+    ctx.worker_restart_state[acc["id"]] = {
+        "attempts": MAX_RESTART_ATTEMPTS,
+        "next": 0.0,
+    }
+    assert ctx._supervise_workers() == 0
+    assert started == []
+    assert ctx.worker_restart_state[acc["id"]]["exhausted"] is True
+    # A manual Start clears the state and re-arms supervision.
+    ctx.worker_restart_state.pop(acc["id"])
+    assert ctx._supervise_workers() == 1
+    assert started == [acc["id"]]
+
+
+def test_automatic_start_never_overrides_operator_stop(loaded, monkeypatch):
+    client, ctx = loaded
+    h = auth(client)
+    acc = client.post(
+        "/api/accounts", json={"name": "Stopped", "autostart": True}, headers=h
+    ).json()
+    ctx.suppressed_workers.add(acc["id"])
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("automatic start must not launch a suppressed worker")
+
+    monkeypatch.setattr(ctx, "ensure_worker_copy", forbidden)
+    ctx.start_worker(ctx.query_account(acc["id"]), manual=False)  # returns silently
+    ctx.suppressed_workers.discard(acc["id"])

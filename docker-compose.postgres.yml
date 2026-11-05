@@ -1,0 +1,21 @@
+# OPTIONAL PostgreSQL only. The panel and Chrome workers still run on host.
+# Set NINJA_DB_PASSWORD in your shell or .env before using this file.
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ninja
+      POSTGRES_USER: ninja
+      POSTGRES_PASSWORD: ${NINJA_DB_PASSWORD:?Set NINJA_DB_PASSWORD before starting PostgreSQL}
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - ninja_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ninja -d ninja"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+volumes:
+  ninja_pgdata:

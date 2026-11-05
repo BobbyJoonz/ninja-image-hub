@@ -1,0 +1,17 @@
+{
+  "fixture_bytes": 7684212,
+  "dimensions": [
+    1600,
+    1600
+  ],
+  "scope": "storage stage only; preallocated base64 input; tracemalloc is Python heap, not RSS, JSON parsing or browser RAM",
+  "legacy": {
+    "seconds": 0.0432,
+    "python_peak_mib": 17.099
+  },
+  "v05_chunked": {
+    "seconds": 0.0286,
+    "python_peak_mib": 0.899
+  },
+  "original_sha256_matches": true
+}

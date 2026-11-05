@@ -1,0 +1,61 @@
+from pydantic import BaseModel, Field
+
+
+class LoginBody(BaseModel):
+    password: str
+
+
+class AccountBody(BaseModel):
+    parallel_limit: int = Field(default=2, ge=1, le=5)
+    name: str = Field(min_length=1, max_length=80)
+    email_label: str = Field(default="", max_length=160)
+    plan_label: str = "unknown"
+    autostart: bool = False
+
+
+class AccountUpdate(BaseModel):
+    parallel_limit: int = Field(default=2, ge=1, le=5)
+    name: str = Field(min_length=1, max_length=80)
+    email_label: str = Field(default="", max_length=160)
+    plan_label: str = "unknown"
+    autostart: bool = False
+
+
+class ConfirmRemove(BaseModel):
+    confirmation: str
+
+
+class GenerateBody(BaseModel):
+    account_id: str
+    prompt: str = Field(min_length=3, max_length=4000)
+    aspect_ratio: str = "1:1"
+    quality_preference: str = "best"
+    n: int = Field(default=1, ge=1, le=10)
+    idempotency_key: str | None = Field(default=None, min_length=8, max_length=128)
+
+
+class LoginClick(BaseModel):
+    x: int = Field(ge=0, le=1280)
+    y: int = Field(ge=0, le=800)
+
+
+class LoginType(BaseModel):
+    text: str = Field(min_length=1, max_length=1024)
+
+
+class LoginKey(BaseModel):
+    key: str
+
+
+class ControlUpdate(BaseModel):
+    global_max_inflight: int | None = Field(default=None, ge=1, le=32)
+    gateway_max_tabs: int | None = Field(default=None, ge=1, le=5)
+    max_pending_jobs: int | None = Field(default=None, ge=1, le=10000)
+    max_batch_images: int | None = Field(default=None, ge=1, le=10)
+    provider_cooldown_minutes: int | None = Field(default=None, ge=1, le=240)
+    max_running_accounts: int | None = Field(default=None, ge=1, le=16)
+    min_free_memory_mb: int | None = Field(default=None, ge=0, le=65536)
+    target_images: int | None = Field(default=None, ge=1, le=100000)
+    target_window_hours: int | None = Field(default=None, ge=1, le=24)
+    idle_worker_shutdown_minutes: int | None = Field(default=None, ge=0, le=1440)
+    dispatch_paused: bool | None = None

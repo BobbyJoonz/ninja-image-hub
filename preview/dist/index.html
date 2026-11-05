@@ -1,0 +1,900 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Ninja Image Hub — Multi-Account Studio</title>
+    <meta name="theme-color" content="#07101c" />
+    <link rel="stylesheet" href="/static/style.css" />
+  <script src="/demo.js"></script></head>
+  <body>
+    <div class="auth-screen" id="authScreen">
+      <div class="auth-panel">
+        <div class="brand mark">
+          <span class="ninja-mark">✣</span
+          ><span>NINJA<span class="brand-accent">/</span>IMAGE</span>
+        </div>
+        <div class="auth-icon">◈</div>
+        <h1>Welcome back.</h1>
+        <p>Sign in to manage your private image workers and generation jobs.</p>
+        <form id="loginForm">
+          <label for="password">Admin password</label
+          ><input
+            id="password"
+            type="password"
+            autocomplete="current-password"
+            placeholder="Enter your admin password"
+            required
+            minlength="12"
+          /><button type="submit" class="btn primary full">
+            Sign in <span>→</span>
+          </button>
+        </form>
+        <div id="authError" class="error-text"></div>
+        <div class="auth-foot">SELF-HOSTED • PRIVATE CONTROL PLANE</div>
+      </div>
+    </div>
+    <div class="app" id="app" hidden>
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="ninja-mark">✣</span
+          ><span>NINJA<span class="brand-accent">/</span>IMAGE</span>
+        </div>
+        <div class="workspace-label">WORKSPACE</div>
+        <nav class="navigation" aria-label="Main navigation">
+          <button data-view="overview" class="nav-link active">
+            <img
+              class="nav-image"
+              alt=""
+              src="https://cdn.jsdelivr.net/gh/lucide-icons/lucide@main/icons/layout-dashboard.svg"
+            /><span class="icon-fallback" aria-hidden="true">▦</span> Overview
+          </button>
+          <button data-view="analytics" class="nav-link">
+            <img
+              class="nav-image"
+              alt=""
+              src="https://cdn.jsdelivr.net/gh/lucide-icons/lucide@main/icons/chart-no-axes-combined.svg"
+            /><span class="icon-fallback" aria-hidden="true">▥</span> Analytics
+          </button>
+          <button data-view="operations" class="nav-link">
+            <img
+              class="nav-image"
+              alt=""
+              src="https://cdn.jsdelivr.net/gh/lucide-icons/lucide@main/icons/sliders-horizontal.svg"
+            /><span class="icon-fallback" aria-hidden="true">☷</span>
+            Operations
+          </button>
+          <button data-view="accounts" class="nav-link">
+            <img
+              class="nav-image"
+              alt=""
+              src="https://cdn.jsdelivr.net/gh/lucide-icons/lucide@main/icons/users-round.svg"
+            /><span class="icon-fallback" aria-hidden="true">♙</span> Accounts
+            <span class="count" id="navAccountCount">0</span>
+          </button>
+          <button data-view="studio" class="nav-link">
+            <img
+              class="nav-image"
+              alt=""
+              src="https://cdn.jsdelivr.net/gh/lucide-icons/lucide@main/icons/images.svg"
+            /><span class="icon-fallback" aria-hidden="true">◈</span> Image
+            Studio
+          </button>
+          <button data-view="jobs" class="nav-link">
+            <img
+              class="nav-image"
+              alt=""
+              src="https://cdn.jsdelivr.net/gh/lucide-icons/lucide@main/icons/list-checks.svg"
+            /><span class="icon-fallback" aria-hidden="true">☑</span> Jobs
+          </button>
+          <button data-view="gallery" class="nav-link">
+            <img
+              class="nav-image"
+              alt=""
+              src="https://cdn.jsdelivr.net/gh/lucide-icons/lucide@main/icons/gallery-horizontal-end.svg"
+            /><span class="icon-fallback" aria-hidden="true">▧</span> Gallery
+          </button>
+        </nav>
+        <div class="workspace-label settings-label">SYSTEM</div>
+        <nav class="navigation">
+          <button data-view="settings" class="nav-link">
+            <img
+              class="nav-image"
+              alt=""
+              src="https://cdn.jsdelivr.net/gh/lucide-icons/lucide@main/icons/settings.svg"
+            /><span class="icon-fallback" aria-hidden="true">⚙</span> Settings
+          </button>
+        </nav>
+        <div class="sidebar-bottom">
+          <div class="system-dot"><i></i> Private workspace</div>
+          <button class="profile" id="logoutBtn">
+            <span class="avatar">AD</span
+            ><span>Administrator<small>Sign out</small></span
+            ><span>↗</span>
+          </button>
+        </div>
+      </aside>
+      <main class="main">
+        <header class="topbar">
+          <div class="crumb">
+            NINJA IMAGE <span>/</span> <strong id="viewCrumb">Overview</strong>
+          </div>
+          <div class="top-actions">
+            <span id="runtimeBadge" class="top-badge">● Runtime checking</span
+            ><button class="btn secondary sm" id="headerNew">
+              ＋ Add account
+            </button>
+          </div>
+        </header>
+        <div class="content">
+          <section class="view" data-page="overview">
+            <div class="eyebrow">CONTROL CENTER / 01</div>
+            <div class="title-row">
+              <div>
+                <h1>Overview<span class="dot">.</span></h1>
+                <p class="subtitle">
+                  Live queue, connected accounts and delivery readiness.
+                </p>
+              </div>
+              <button class="btn secondary" id="refreshBtn">
+                ↻ Refresh data
+              </button>
+            </div>
+            <div class="ops-strip" id="opsStrip" aria-live="polite">
+              <span class="skeleton-line">Loading live operations…</span>
+            </div>
+            <div class="hero">
+              <div>
+                <span class="hero-tag">◈ YOUR PRIVATE IMAGE OPERATIONS</span>
+                <h2>Production desk.<br /><em>Every job accounted for.</em></h2>
+                <p>
+                  Connect independent browser sessions, create images and review
+                  every job from a single control plane.
+                </p>
+                <button class="btn primary" data-go="studio">
+                  Open Image Studio <span>↗</span>
+                </button>
+              </div>
+              <div class="hero-art hero-metrics">
+                <div class="metric-kicker" id="heroTargetTitle">
+                  DELIVERY TARGET
+                </div>
+                <div class="hero-big">
+                  <span id="heroTargetValue">500</span> <span>images</span>
+                </div>
+                <div class="metric-caption">
+                  Measured pace <strong id="overviewPace">—</strong> images/hour
+                </div>
+                <div class="progress-rail">
+                  <i id="overviewProgress" style="width: 0%"></i>
+                </div>
+                <small id="overviewProjection">No production data yet</small>
+              </div>
+            </div>
+            <div class="stats">
+              <div class="stat">
+                <div class="stat-label">TOTAL ACCOUNTS <span>♙</span></div>
+                <div class="stat-value" id="statAccounts">0</div>
+                <div class="stat-caption">Independent sessions</div>
+              </div>
+              <div class="stat">
+                <div class="stat-label">IMAGES COMPLETE <span>◈</span></div>
+                <div class="stat-value" id="statComplete">0</div>
+                <div class="stat-caption">Stored privately</div>
+              </div>
+              <div class="stat">
+                <div class="stat-label">ACTIVE JOBS <span>◷</span></div>
+                <div class="stat-value" id="statActive">0</div>
+                <div class="stat-caption">Queued or generating</div>
+              </div>
+              <div class="stat">
+                <div class="stat-label">ALL-TIME JOBS <span>↗</span></div>
+                <div class="stat-value" id="statJobs">0</div>
+                <div class="stat-caption">Across all accounts</div>
+              </div>
+            </div>
+            <div class="section-head">
+              <h3>Account health</h3>
+              <button class="text-button" data-go="accounts">
+                Manage accounts ↗
+              </button>
+            </div>
+            <div id="overviewAccounts" class="account-grid"></div>
+            <div id="runtimeNotice" class="notice warning"></div>
+            <div class="notice info" id="queueNotice">
+              Queue telemetry loading…
+            </div>
+          </section>
+
+          <section class="view" data-page="analytics" hidden>
+            <div class="eyebrow">INTELLIGENCE / 02</div>
+            <div class="title-row">
+              <div>
+                <h1>Performance<span class="dot">.</span></h1>
+                <p class="subtitle">
+                  Observed output, errors and queue pressure. Never estimated as
+                  actual generation.
+                </p>
+              </div>
+              <div
+                class="period-switch"
+                role="group"
+                aria-label="Analytics time range"
+              >
+                <button data-hours="5" class="period-btn active">5H</button
+                ><button data-hours="24" class="period-btn">24H</button
+                ><button data-hours="168" class="period-btn">7D</button
+                ><button data-hours="720" class="period-btn">30D</button>
+              </div>
+            </div>
+            <div class="metric-line" id="analyticsMetrics">
+              <div class="empty">No measurements yet.</div>
+            </div>
+            <div class="analytics-layout">
+              <article class="panel trend-panel">
+                <div class="chart-head">
+                  <div>
+                    <div class="eyebrow">OUTPUT / VERIFIED FILES</div>
+                    <h3>Images delivered over time</h3>
+                  </div>
+                  <span class="legend"><i></i> Stored images</span>
+                </div>
+                <div
+                  id="analyticsChart"
+                  class="bar-chart"
+                  role="img"
+                  aria-label="Stored images by time bucket"
+                ></div>
+                <div class="chart-foot">
+                  <span id="chartFrom">—</span><span id="chartTo">—</span>
+                </div>
+                <p class="fine-print">
+                  Chart counts files stored in the private gallery. A partially
+                  completed job may count multiple images; API success is not
+                  inferred from a job count.
+                </p>
+              </article>
+              <article class="panel health-panel">
+                <div class="eyebrow">DIAGNOSTICS</div>
+                <h3>Job outcomes</h3>
+                <div id="statusBreakdown" class="outcomes"></div>
+                <div class="chart-rule"></div>
+                <div class="stat-mini">
+                  <span>Oldest queued job</span
+                  ><strong id="oldestJob">—</strong>
+                </div>
+                <div class="stat-mini">
+                  <span>P50 generation job</span
+                  ><strong id="latencyP50">—</strong>
+                </div>
+                <div class="stat-mini">
+                  <span>P95 generation job</span
+                  ><strong id="latencyP95">—</strong>
+                </div>
+              </article>
+            </div>
+            <article class="panel account-report">
+              <div class="chart-head">
+                <div>
+                  <div class="eyebrow">ACCOUNT CONTRIBUTION</div>
+                  <h3>Productivity by account</h3>
+                </div>
+                <button class="text-button" data-go="accounts">
+                  Manage accounts
+                </button>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>ACCOUNT</th>
+                      <th>JOBS</th>
+                      <th>IMAGES</th>
+                      <th>FAILED</th>
+                      <th>PARTIAL</th>
+                      <th>UNKNOWN</th>
+                      <th>LIMITED</th>
+                    </tr>
+                  </thead>
+                  <tbody id="analyticsAccounts">
+                    <tr>
+                      <td colspan="7">No data yet</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </article>
+            <article class="panel failures-panel">
+              <div class="chart-head">
+                <div>
+                  <div class="eyebrow">EXCEPTIONS</div>
+                  <h3>Recent incidents</h3>
+                </div>
+                <button class="text-button" data-go="jobs">Open Jobs</button>
+              </div>
+              <div id="incidentList" class="incident-list"></div>
+            </article>
+            <p class="fine-print" id="analyticsCaveat"></p>
+          </section>
+          <section class="view" data-page="operations" hidden>
+            <div class="eyebrow">CONTROL PLANE / 03</div>
+            <div class="title-row">
+              <div>
+                <h1>Operations<span class="dot">.</span></h1>
+                <p class="subtitle">
+                  Set capacity and pause dispatch from one guarded control
+                  panel.
+                </p>
+              </div>
+              <span id="dispatchState" class="state-chip">Loading state…</span>
+            </div>
+            <div class="operations-layout">
+              <div class="ops-main">
+                <article class="panel">
+                  <div class="panel-title">
+                    <span class="rounded-icon">◷</span>
+                    <div>
+                      <h3>Dispatch control</h3>
+                      <small
+                        >Pausing only stops NEW jobs. Running requests finish
+                        normally.</small
+                      >
+                    </div>
+                  </div>
+                  <div class="dispatch-bar">
+                    <div>
+                      <strong id="dispatchDescription"
+                        >Checking scheduler</strong
+                      >
+                      <p>Jobs remain durable while the dispatcher is paused.</p>
+                    </div>
+                    <button
+                      id="toggleDispatch"
+                      class="btn secondary"
+                      type="button"
+                    >
+                      Pause dispatch
+                    </button>
+                  </div>
+                </article>
+                <article class="panel">
+                  <div class="chart-head">
+                    <div>
+                      <div class="eyebrow">SCHEDULER POLICY</div>
+                      <h3>Runtime configuration</h3>
+                    </div>
+                    <span class="state-chip">Saved in database</span>
+                  </div>
+                  <form id="controlForm" class="controls-grid">
+                    <label
+                      >Target images / delivery window<input
+                        name="target_images"
+                        type="number"
+                        min="1"
+                        max="100000"
+                        step="1"
+                        required
+                      /><small
+                        >Demand goal. Does not allocate provider quota</small
+                      ></label
+                    >
+                    <label
+                      >Delivery window in hours<input
+                        name="target_window_hours"
+                        type="number"
+                        min="1"
+                        max="24"
+                        step="1"
+                        required
+                      /><small
+                        >Defines the target throughput and projection</small
+                      ></label
+                    >
+                    <label
+                      >Global concurrent jobs<input
+                        name="global_max_inflight"
+                        type="number"
+                        min="1"
+                        max="32"
+                        step="1"
+                        required
+                      /><small
+                        >Max number of active requests across all
+                        accounts</small
+                      ></label
+                    >
+                    <label
+                      >Concurrent Gateway tabs<input
+                        name="gateway_max_tabs"
+                        type="number"
+                        min="1"
+                        max="5"
+                        step="1"
+                        required
+                      /><small
+                        >Per worker. Requires idle worker restart</small
+                      ></label
+                    >
+                    <label
+                      >Max browser workers<input
+                        name="max_running_accounts"
+                        type="number"
+                        min="1"
+                        max="16"
+                        step="1"
+                        required
+                      /><small
+                        >RAM safety ceiling for connected account
+                        processes</small
+                      ></label
+                    >
+                    <label
+                      >Max images per request<input
+                        name="max_batch_images"
+                        type="number"
+                        min="1"
+                        max="10"
+                        step="1"
+                        required
+                      /><small
+                        >Batch N; requires worker restart to apply
+                        upstream</small
+                      ></label
+                    >
+                    <label
+                      >Pending job queue<input
+                        name="max_pending_jobs"
+                        type="number"
+                        min="1"
+                        max="10000"
+                        step="1"
+                        required
+                      /><small
+                        >Backpressure ceiling. Existing queued work is
+                        preserved</small
+                      ></label
+                    >
+                    <label
+                      >Minimum provider cooldown (min)<input
+                        name="provider_cooldown_minutes"
+                        type="number"
+                        min="1"
+                        max="240"
+                        step="1"
+                        required
+                      /><small
+                        >Longer Retry-After is always respected</small
+                      ></label
+                    >
+                    <label
+                      >Idle browser shutdown (min)<input
+                        name="idle_worker_shutdown_minutes"
+                        type="number"
+                        min="0"
+                        max="1440"
+                        step="1"
+                        required
+                      /><small
+                        >Stops an idle worker to free RAM; the next job or the
+                        login page wakes it. 0 keeps every browser
+                        always-on</small
+                      ></label
+                    >
+                    <label
+                      >Minimum free RAM to start a worker (MB)<input
+                        name="min_free_memory_mb"
+                        type="number"
+                        min="0"
+                        max="65536"
+                        step="64"
+                        required
+                      /><small
+                        >New browsers are refused below this free RAM instead
+                        of OOM-killing running accounts. 0 disables the
+                        guard</small
+                      ></label
+                    >
+                    <div class="control-actions">
+                      <p id="controlDirty" class="fine-print">
+                        Choose safe values and save. Existing requests are not
+                        interrupted.
+                      </p>
+                      <button
+                        id="saveControl"
+                        class="btn primary"
+                        type="submit"
+                      >
+                        Save controls
+                      </button>
+                    </div>
+                  </form>
+                </article>
+              </div>
+              <aside class="ops-side">
+                <article class="panel">
+                  <div class="eyebrow">LIVE ALLOCATION</div>
+                  <h3>Capacity now</h3>
+                  <div id="opsCapacity" class="capacity-table"></div>
+                  <p class="fine-print">
+                    Actual limits are bounded by your upstream provider; these
+                    controls do not create additional quota.
+                  </p>
+                </article>
+                <article class="panel">
+                  <div class="eyebrow">CHANGE HISTORY</div>
+                  <h3>Control audit</h3>
+                  <div id="controlAudit" class="audit-list">
+                    No changes yet.
+                  </div>
+                </article>
+              </aside>
+            </div>
+            <div class="notice warning">
+              Unofficial browser automation is not a supported production API
+              and may breach provider terms. The control plane never
+              auto-rotates accounts to evade rate limits. No automatic retry
+              occurs after an unknown result.
+            </div>
+          </section>
+          <section class="view" data-page="accounts" hidden>
+            <div class="eyebrow">WORKSPACE / 04</div>
+            <div class="title-row">
+              <div>
+                <h1>Accounts<span class="dot">.</span></h1>
+                <p class="subtitle">
+                  Independent browser sessions with bounded concurrency and fair
+                  scheduling.
+                </p>
+              </div>
+              <button class="btn primary" id="accountsAdd">
+                ＋ Add account
+              </button>
+            </div>
+            <div class="notice info">
+              <span>ⓘ</span
+              ><span
+                >Every account uses its own local session directory. Browser
+                login is manual, password-free in our database. Online worker ≠
+                verified ChatGPT login.</span
+              >
+            </div>
+            <div class="section-head">
+              <h3>
+                Active accounts
+                <span class="small-count" id="accountCount">0</span>
+              </h3>
+              <button class="text-button" id="accountsRefresh">
+                ↻ Refresh
+              </button>
+            </div>
+            <div id="accountList" class="account-grid"></div>
+            <div class="section-head">
+              <h3>
+                Archived accounts
+                <span class="small-count" id="archivedCount">0</span>
+              </h3>
+              <label class="archive-toggle"
+                ><input type="checkbox" id="showArchived" /> Show archived
+                accounts</label
+              >
+            </div>
+            <div id="archivedList" class="account-grid" hidden></div>
+          </section>
+          <section class="view" data-page="studio" hidden>
+            <div class="eyebrow">CREATE / 05</div>
+            <div class="title-row">
+              <div>
+                <h1>Image Studio<span class="dot">.</span></h1>
+                <p class="subtitle">
+                  Request 1–10 images, monitor each result, and download
+                  original bytes.
+                </p>
+              </div>
+            </div>
+            <div class="studio-grid">
+              <div class="panel create-panel">
+                <div class="panel-title">
+                  <span class="rounded-icon">✧</span>
+                  <div>
+                    <h3>New generation</h3>
+                    <small>Powered by a selected account's browser</small>
+                  </div>
+                </div>
+                <form id="generateForm">
+                  <label for="genAccount">GENERATE WITH</label
+                  ><select id="genAccount" required>
+                    <option value="">Select an account</option></select
+                  ><label for="genPrompt">YOUR PROMPT</label
+                  ><textarea
+                    id="genPrompt"
+                    rows="7"
+                    minlength="3"
+                    maxlength="4000"
+                    placeholder="A cinematic editorial photograph of a futuristic city at dawn, soft golden light, intricate architectural detail…"
+                    required
+                  ></textarea>
+                  <div class="helper-row">
+                    <small
+                      >Describe composition, lighting, subjects and
+                      style.</small
+                    ><span id="charCount">0 / 4000</span>
+                  </div>
+                  <label>ASPECT RATIO</label>
+                  <div
+                    class="ratio-group"
+                    role="group"
+                    aria-label="Image aspect ratio"
+                  >
+                    <button type="button" class="ratio active" data-ratio="1:1">
+                      □ <small>1:1</small></button
+                    ><button type="button" class="ratio" data-ratio="16:9">
+                      ▭ <small>16:9</small></button
+                    ><button type="button" class="ratio" data-ratio="9:16">
+                      ▯ <small>9:16</small></button
+                    ><button type="button" class="ratio" data-ratio="4:3">
+                      ▱ <small>4:3</small></button
+                    ><button type="button" class="ratio" data-ratio="3:4">
+                      ▯ <small>3:4</small>
+                    </button>
+                  </div>
+                  <label for="genCount">IMAGES PER REQUEST</label
+                  ><select id="genCount">
+                    <option value="1" selected>1 image</option>
+                    <option value="2">2 images</option>
+                    <option value="3">3 images</option>
+                    <option value="4">4 images</option>
+                    <option value="5">5 images</option>
+                    <option value="6">6 images</option>
+                    <option value="7">7 images</option>
+                    <option value="8">8 images</option>
+                    <option value="9">9 images</option>
+                    <option value="10">10 images</option>
+                  </select>
+                  <p class="fine-print">
+                    A batch requests N outputs; it does not guarantee
+                    simultaneous rendering. The configured maximum and your
+                    provider limits still apply.
+                  </p>
+                  <label for="qualityPreference"
+                    >VISUAL QUALITY PREFERENCE</label
+                  ><select id="qualityPreference">
+                    <option value="best" selected>
+                      Best available — prompt guidance
+                    </option>
+                    <option value="balanced">Balanced — standard prompt</option>
+                    <option value="draft">Draft — standard prompt</option>
+                  </select>
+                  <p class="fine-print">
+                    For ChatGPT browser mode, this is not a native
+                    High/Medium/Low model setting. The gateway cannot guarantee
+                    render quality. Original images are preserved byte-for-byte.
+                  </p>
+                  <button
+                    type="submit"
+                    class="btn primary full"
+                    id="generateBtn"
+                  >
+                    ✧ Queue images <span>→</span>
+                  </button>
+                </form>
+                <p class="fine-print">
+                  Generation uses an unofficial third-party browser gateway,
+                  subject to provider availability and service terms. No quota
+                  bypass or automatic rate-limit rotation.
+                </p>
+              </div>
+              <div class="panel output-panel">
+                <div class="panel-title">
+                  <span class="rounded-icon">▧</span>
+                  <div>
+                    <h3>Latest result</h3>
+                    <small>Generation progress and preview</small>
+                  </div>
+                </div>
+                <div id="latestPreview" class="preview-empty">
+                  <div class="preview-graphic">✣</div>
+                  <h3>Ready when you are.</h3>
+                  <p>
+                    Your next image will appear here when the job completes.
+                  </p>
+                </div>
+                <div id="latestStatus" class="preview-status">
+                  No active generation
+                </div>
+              </div>
+            </div>
+          </section>
+          <section class="view" data-page="jobs" hidden>
+            <div class="eyebrow">ACTIVITY / 06</div>
+            <div class="title-row">
+              <div>
+                <h1>Jobs<span class="dot">.</span></h1>
+                <p class="subtitle">
+                  Trace each request, account selection and outcome.
+                </p>
+              </div>
+              <button class="btn secondary" id="jobsRefresh">↻ Refresh</button>
+            </div>
+            <div class="panel table-panel">
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>JOB / PROMPT</th>
+                      <th>ACCOUNT</th>
+                      <th>STATUS</th>
+                      <th>CREATED</th>
+                      <th>OUTPUT</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="jobsTable">
+                    <tr>
+                      <td colspan="6">No jobs yet.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+          <section class="view" data-page="gallery" hidden>
+            <div class="eyebrow">ASSETS / 07</div>
+            <div class="title-row">
+              <div>
+                <h1>Gallery<span class="dot">.</span></h1>
+                <p class="subtitle">
+                  Private images, available only to authenticated admins.
+                </p>
+              </div>
+              <button class="btn secondary" id="galleryRefresh">
+                ↻ Refresh
+              </button>
+            </div>
+            <div class="gallery-toolbar">
+              <span id="galleryCount">0 images loaded</span
+              ><span>Original bytes preserved · previews up to 640 px</span>
+            </div>
+            <div id="galleryGrid" class="gallery-grid"></div>
+            <div class="gallery-footer">
+              <button id="galleryMore" class="btn secondary" hidden>
+                Load more images
+              </button>
+            </div>
+          </section>
+          <section class="view" data-page="settings" hidden>
+            <div class="eyebrow">SYSTEM / 08</div>
+            <div class="title-row">
+              <div>
+                <h1>Settings<span class="dot">.</span></h1>
+                <p class="subtitle">
+                  Runtime checks, installation instructions and integration.
+                </p>
+              </div>
+            </div>
+            <div class="setting-grid">
+              <div class="panel settings-panel">
+                <h3>Runtime environment</h3>
+                <div id="settingsList"></div>
+              </div>
+              <div class="panel settings-panel">
+                <h3>Gateway installation</h3>
+                <p class="muted">
+                  Run once on your own computer. New accounts can then be
+                  created in the web panel automatically.
+                </p>
+                <div class="code-label">SETUP COMMAND</div>
+                <pre>python scripts/prepare_gateway.py</pre>
+                <div class="code-label">START THE PANEL</div>
+                <pre>
+python -m uvicorn app:app --host 127.0.0.1 --port 8080</pre>
+                <div class="notice warning">
+                  The gateway is an experimental third-party adapter. Automated
+                  ChatGPT access is against OpenAI's Terms of Use. The safest
+                  production option is an official image API.
+                </div>
+              </div>
+              <div class="panel settings-panel wide">
+                <h3>Agent endpoint</h3>
+                <p class="muted">
+                  Use <code>AGENT_API_KEY</code> as a Bearer token. POST creates
+                  an asynchronous job; GET polls its status. Account ID must be
+                  specified explicitly.
+                </p>
+                <pre>
+POST /v1/images/generations
+Authorization: Bearer &lt;AGENT_API_KEY&gt;
+Content-Type: application/json
+
+{
+  "account_id": "&lt;account UUID&gt;",
+  "prompt": "A neon samurai in the rain",
+  "aspect_ratio": "16:9"
+}
+
+GET /v1/jobs/&lt;job UUID&gt;</pre>
+              </div>
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <dialog id="addDialog" class="modal">
+      <form id="addForm">
+        <div class="modal-top">
+          <span class="modal-tag">ACCOUNT SETUP</span
+          ><button
+            type="button"
+            class="close-btn"
+            id="cancelModal"
+            aria-label="Close"
+          >
+            ✕
+          </button>
+        </div>
+        <h2 id="accountDialogTitle">Add an account</h2>
+        <p>
+          Create an isolated worker. Then click <strong>Login</strong> to
+          connect your own ChatGPT account manually.
+        </p>
+        <label for="accName">Display name</label
+        ><input
+          id="accName"
+          maxlength="80"
+          placeholder="Studio account 01"
+          required
+        /><label for="accEmail">Email label (optional)</label
+        ><input
+          id="accEmail"
+          maxlength="160"
+          placeholder="name@example.com"
+        /><label for="accPlan"
+          >Subscription label (manual — not verified automatically)</label
+        ><select id="accPlan">
+          <option value="unknown">Unknown</option>
+          <option value="plus">Plus (manually checked)</option>
+          <option value="pro">Pro (manually checked)</option>
+          <option value="free">Free (manually checked)</option>
+          <option value="other">Other (manually checked)</option></select
+        ><label for="accParallel">Concurrent jobs for this account</label
+        ><select id="accParallel">
+          <option value="1">1 (safest)</option>
+          <option value="2" selected>2 (balanced)</option>
+          <option value="3">3</option>
+          <option value="4">4</option>
+          <option value="5">5</option>
+        </select>
+        <p class="fine-print">
+          Effective parallelism is also capped by Gateway tabs and the global
+          dispatcher. This does not increase provider quota. Changes apply to
+          future jobs.
+        </p>
+        <label class="checkbox-line"
+          ><input id="accAutostart" type="checkbox" /> Automatically start this
+          account when the panel runs</label
+        >
+        <div class="modal-actions">
+          <button type="button" class="btn secondary" id="cancelModal2">
+            Cancel</button
+          ><button type="submit" class="btn primary" id="saveAccountBtn">
+            Create account →
+          </button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="logsDialog" class="modal log-modal">
+      <div class="modal-top">
+        <span class="modal-tag">WORKER LOGS</span
+        ><button class="close-btn" id="closeLogs">✕</button>
+      </div>
+      <h2 id="logsTitle">Worker logs</h2>
+      <pre id="logsContent">Loading…</pre>
+    </dialog>
+    <noscript
+      ><p style="padding: 20px; color: white">
+        JavaScript is required for the Ninja Image Hub control plane.
+      </p></noscript
+    >
+    <script type="module" src="/static/app.js"></script>
+  </body>
+</html>

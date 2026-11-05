@@ -1,0 +1,6 @@
+# Keep Linux deployment files byte-exact (LF) even on a Windows checkout.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.png binary
+*.jpg binary
+*.zip binary
