@@ -34,6 +34,14 @@ export function renderAll() {
       )
       .join("");
   if (active.some((a) => a.id === selected)) $("genAccount").value = selected;
+  else if (!selected && active.length) {
+    // Convenience: default to a connected account so Generate is one click away.
+    const preferred =
+      active.find((a) => a.session === "connected" && a.runtime === "running") ||
+      active.find((a) => a.session === "connected") ||
+      active[0];
+    $("genAccount").value = preferred.id;
+  }
   if ($("queueNotice"))
     $("queueNotice").textContent =
       `Queue: ${S.queue.queued || 0} waiting · ${S.queue.running || 0}/${S.queue.max_global_inflight || "?"} dispatched · ${S.queue.completed || 0} completed · ${S.queue.partial || 0} partial · ${S.queue.unknown || 0} unknown. Account cooldowns and provider quotas are respected.`;
@@ -58,10 +66,38 @@ export function accountCards(arr, archived = false) {
       ? '<div class="empty"><p>No archived accounts.</p></div>'
       : `<div class="empty"><h3>No active accounts yet</h3><p>Add an account to create an isolated browser workspace.</p><button class="btn primary" data-action="add">${uiIcon("plus")} Add account</button></div>`;
   return arr
-    .map(
-      (a) =>
-        `<article class="account-card"><div class="account-top"><div class="account-icon">${uiIcon("account")}</div><div class="identity"><div class="account-name">${esc(a.name)}</div><div class="account-email">${esc(a.email_label || "No email label")}</div></div><div class="account-pill"><span class="pill ${esc(a.runtime)}">● ${esc(a.runtime)}</span><span class="pill ${esc(a.session)}">${esc(a.session)}</span></div></div><div class="account-meta"><span>Plan: <strong>${esc((a.plan_label || "unknown").toUpperCase())} · manual</strong></span><span>Autostart: <strong>${a.autostart ? "On" : "Off"}</strong></span><span>Parallel: <strong>${a.parallel_limit || 1} job(s)</strong></span><span>RAM: <strong>${a.memory_mb == null ? "—" : a.memory_mb + " MiB"}</strong></span><span>Dispatch: <strong>${a.dispatch_enabled ? "On" : "Paused"}</strong></span>${a.restart_required ? '<span class="plan-pending">Restart required</span>' : ""}${a.auto_login_configured ? '<span class="plan-pending">Auto-login</span>' : ""}${a.cooldown_until ? `<span>Cooldown: <strong>${esc(a.cooldown_until)}</strong></span>` : ""}${a.session_blocker ? `<span>Login blocker: <strong>${esc(a.session_blocker)}</strong></span>` : ""}</div><div class="account-buttons">${archived ? `<button class="small-action accent" data-action="restore" data-id="${a.id}">${uiIcon("restore")} Restore</button><button class="small-action danger" data-action="purge" data-id="${a.id}">${uiIcon("trash")} Delete forever</button>` : `<button class="small-action" data-action="edit" data-id="${a.id}">${uiIcon("pencil")} Edit</button>${a.runtime === "stopped" ? `<button class="small-action accent" data-action="start" data-id="${a.id}">${uiIcon("play")} Start</button>` : `<button class="small-action" data-action="stop" data-id="${a.id}">${uiIcon("stop")} Stop</button>`}<button class="small-action accent" data-action="login" data-id="${a.id}">${uiIcon("login")} Login</button><button class="small-action" data-action="${a.dispatch_enabled ? "pause-dispatch" : "resume-dispatch"}" data-id="${a.id}">${a.dispatch_enabled ? `${uiIcon("pause")} Pause queue` : `${uiIcon("play")} Resume queue`}</button><button class="small-action" data-action="logs" data-id="${a.id}">${uiIcon("logs")} Logs</button><button class="small-action danger" data-action="archive" data-id="${a.id}">${uiIcon("archive")} Archive</button>`}</div></article>`,
-    )
+    .map((a) => {
+      const meta = [
+        `Plan: <strong>${esc((a.plan_label || "unknown").toUpperCase())} · manual</strong>`,
+        `Autostart: <strong>${a.autostart ? "On" : "Off"}</strong>`,
+        `Parallel: <strong>${a.parallel_limit || 1} job(s)</strong>`,
+        `RAM: <strong>${a.memory_mb == null ? "—" : a.memory_mb + " MiB"}</strong>`,
+        `Dispatch: <strong>${a.dispatch_enabled ? "On" : "Paused"}</strong>`,
+        a.restart_required
+          ? '<span class="plan-pending">Restart required</span>'
+          : "",
+        a.auto_login_configured
+          ? '<span class="plan-pending">Auto-login</span>'
+          : "",
+        a.cooldown_until
+          ? `<span>Cooldown: <strong>${esc(a.cooldown_until)}</strong></span>`
+          : "",
+        a.session_blocker
+          ? `<span>Login blocker: <strong>${esc(a.session_blocker)}</strong></span>`
+          : "",
+      ]
+        .filter(Boolean)
+        .map((item) => `<span>${item}</span>`)
+        .join("");
+      const primary = archived
+        ? `<button class="small-action accent" data-action="restore" data-id="${a.id}">${uiIcon("restore")} Restore</button><button class="small-action danger" data-action="purge" data-id="${a.id}">${uiIcon("trash")} Delete forever</button>`
+        : `<button class="small-action" data-action="edit" data-id="${a.id}">${uiIcon("pencil")} Edit</button>${
+            a.runtime === "stopped"
+              ? `<button class="small-action accent" data-action="start" data-id="${a.id}">${uiIcon("play")} Start</button>`
+              : `<button class="small-action" data-action="stop" data-id="${a.id}">${uiIcon("stop")} Stop</button>`
+          }<button class="small-action accent" data-action="login" data-id="${a.id}">${uiIcon("login")} Login</button><details class="action-menu"><summary aria-label="More actions for ${esc(a.name)}" title="More actions">${uiIcon("more")}</summary><div class="action-menu-list"><button class="small-action" data-action="${a.dispatch_enabled ? "pause-dispatch" : "resume-dispatch"}" data-id="${a.id}">${a.dispatch_enabled ? uiIcon("pause") + " Pause queue" : uiIcon("play") + " Resume queue"}</button><button class="small-action" data-action="logs" data-id="${a.id}">${uiIcon("logs")} Logs</button><button class="small-action danger" data-action="archive" data-id="${a.id}">${uiIcon("archive")} Archive</button></div></details>`;
+      return `<article class="account-card"><div class="account-top"><div class="account-icon">${uiIcon("account")}</div><div class="identity"><div class="account-name">${esc(a.name)}</div><div class="account-email">${esc(a.email_label || "No email label")}</div></div><div class="account-pill"><span class="pill ${esc(a.runtime)}">● ${esc(a.runtime)}</span><span class="pill ${esc(a.session)}">${esc(a.session)}</span></div></div><div class="account-meta">${meta}</div><div class="account-buttons">${primary}</div></article>`;
+    })
     .join("");
 }
 
@@ -69,16 +105,46 @@ export function statusPill(v) {
   return `<span class="pill ${esc(v)}">${esc(v)}</span>`;
 }
 
+export function filterJobs(jobs, status = "all", query = "", accountNames = {}) {
+  const q = String(query || "").trim().toLowerCase();
+  return (jobs || []).filter((j) => {
+    if (status === "active" && !["queued", "running"].includes(j.status))
+      return false;
+    if (status === "completed" && j.status !== "completed") return false;
+    if (
+      status === "problems" &&
+      !["failed", "unknown", "rate_limited"].includes(j.status)
+    )
+      return false;
+    if (!q) return true;
+    const haystack = [j.prompt, j.id, j.status, accountNames[j.account_id] || ""]
+      .join(" ")
+      .toLowerCase();
+    return haystack.includes(q);
+  });
+}
+
 export function renderJobs() {
   const map = Object.fromEntries(S.accounts.map((a) => [a.id, a.name]));
-  $("jobsTable").innerHTML = S.jobs.length
-    ? S.jobs
+  const all = S.jobs || [];
+  const filtered = filterJobs(all, S.jobsFilter, S.jobQuery, map);
+  const count = $("jobCount");
+  if (count)
+    count.textContent = all.length
+      ? `${filtered.length} of ${all.length} jobs`
+      : "0 jobs";
+  $("jobsTable").innerHTML = filtered.length
+    ? filtered
         .map(
           (j) =>
-            `<tr><td><div class="job-prompt" title="${esc(j.prompt)}">${esc(trunc(j.prompt, 70))}</div><div class="job-id">${esc(j.id.slice(0, 8))}</div></td><td>${esc(map[j.account_id] || "Deleted account")}</td><td>${statusPill(j.status)}<div class="job-id">${j.image_count || 0}/${j.n || 1} images</div></td><td>${esc(new Date(j.created_at).toLocaleString())}</td><td>${j.image_url ? `<a href="${j.image_url}" target="_blank" rel="noopener">${uiIcon("external")} View ${j.image_count || 1} image(s)</a>` : esc(trunc(j.error || "—", 60))}</td><td>${j.status === "queued" ? `<button class="small-action danger" data-action="delete-job" data-id="${j.id}">Cancel</button>` : j.status !== "running" ? `<button class="small-action" data-action="delete-job" data-id="${j.id}">Delete</button>` : ""}</td></tr>`,
+            `<tr><td data-label="JOB / PROMPT"><div class="job-prompt" title="${esc(j.prompt)}">${esc(trunc(j.prompt, 90))}</div><div class="job-id">${esc(j.id.slice(0, 8))}</div></td><td data-label="ACCOUNT">${esc(map[j.account_id] || "Deleted account")}</td><td data-label="STATUS">${statusPill(j.status)}<div class="job-id">${j.image_count || 0}/${j.n || 1} images</div></td><td data-label="CREATED">${esc(new Date(j.created_at).toLocaleString())}</td><td data-label="OUTPUT">${j.image_url ? `<a href="${j.image_url}" target="_blank" rel="noopener">${uiIcon("external")} View ${j.image_count || 1} image(s)</a>` : esc(trunc(j.error || "—", 60))}</td><td data-label="ACTION">${j.status === "queued" ? `<button class="small-action danger" data-action="delete-job" data-id="${j.id}">Cancel</button>` : j.status !== "running" ? `<button class="small-action" data-action="delete-job" data-id="${j.id}">Delete</button>` : ""}</td></tr>`,
         )
         .join("")
-    : '<tr><td colspan="6" style="text-align:center;color:#92a8be;padding:40px">No jobs yet. Open Image Studio to create one.</td></tr>';
+    : `<tr><td colspan="6" class="jobs-empty">${
+        all.length
+          ? "No jobs match this filter or search."
+          : "No jobs yet. Open Image Studio to create one."
+      }</td></tr>`;
 }
 
 export function renderGallery() {
@@ -120,6 +186,10 @@ export function renderSettings() {
     .join("");
 }
 
+export function chartHasData(series) {
+  return Array.isArray(series) && series.some((x) => Number(x.images) > 0);
+}
+
 export function renderAnalytics() {
   const a = S.analytics || {};
   if (!a.series) return;
@@ -148,12 +218,15 @@ export function renderAnalytics() {
     )
     .join("");
   const max = Math.max(1, ...a.series.map((x) => x.images));
-  $("analyticsChart").innerHTML = a.series
-    .map(
-      (x, i) =>
-        `<div class="bar-column" title="${esc(new Date(x.time).toLocaleString())}: ${x.images} image(s)" aria-label="Bucket ${i + 1}: ${x.images} images"><span class="bar-count">${x.images || ""}</span><div class="bar" style="height:${Math.max(x.images ? 8 : 2, Math.round((x.images / max) * 100))}%"></div></div>`,
-    )
-    .join("");
+  const hasData = chartHasData(a.series);
+  $("analyticsChart").innerHTML = hasData
+    ? `<div class="chart-body"><div class="chart-y" aria-hidden="true"><span>${compact(max)}</span><span>${compact(Math.round(max / 2))}</span><span>0</span></div><div class="bar-chart" role="img" aria-label="Stored images by time bucket, ${compact(a.images)} in this window">${a.series
+        .map(
+          (x, i) =>
+            `<div class="bar-column" title="${esc(new Date(x.time).toLocaleString())}: ${x.images} image(s)" aria-label="Bucket ${i + 1}: ${x.images} images"><span class="bar-count">${x.images || ""}</span><div class="bar" style="height:${x.images ? Math.max(6, Math.round((x.images / max) * 100)) : 0}%"></div></div>`,
+        )
+        .join("")}</div></div>`
+    : `<div class="chart-empty">${uiIcon("image")}<strong>No images stored in this window</strong><p>Change the range above, or queue a job in Image Studio. Nothing is estimated here.</p><button class="btn secondary sm" data-go="studio">Open Image Studio</button></div>`;
   $("chartFrom").textContent = new Date(a.window_start).toLocaleString();
   $("chartTo").textContent = new Date(a.window_end).toLocaleString();
   const statuses = [
@@ -250,7 +323,7 @@ export function renderLatest() {
     renderLatest.fingerprint = null;
     $("latestStatus").textContent = "No active generation";
     $("latestPreview").innerHTML =
-      '<div class="preview-graphic">✣</div><h3>Ready when you are.</h3><p>Your next image will appear here when the job completes.</p>';
+      '<div class="preview-graphic">' + uiIcon("mask") + '</div><h3>Ready when you are.</h3><p>Your next image will appear here when the job completes.</p>';
     return;
   }
   const fingerprint = JSON.stringify([j.id, j.status, j.error, j.images]);
@@ -260,9 +333,9 @@ export function renderLatest() {
     `Job ${j.id.slice(0, 8)} · ${j.status} · ${j.image_count || 0}/${j.n || 1} images${j.error ? " · " + j.error : ""}`;
   if (j.images?.length) {
     $("latestPreview").innerHTML =
-      `<div class="batch-preview">${j.images.map((im) => `<div><a href="${im.url}" target="_blank" rel="noopener"><img loading="lazy" decoding="async" src="${im.preview_url || im.url}" alt="Generated output #${im.position + 1}"></a><p>${im.image_width}×${im.image_height} · ${esc(im.image_format)}<br><a href="${im.url}?download=true">Download #${im.position + 1} ↧</a></p></div>`).join("")}</div>`;
+      `<div class="batch-preview">${j.images.map((im) => `<div><a href="${im.url}" target="_blank" rel="noopener"><img loading="lazy" decoding="async" src="${im.preview_url || im.url}" alt="Generated output #${im.position + 1}"></a><p>${im.image_width}×${im.image_height} · ${esc(im.image_format)}<br><a href="${im.url}?download=true">${uiIcon("download")} Download #${im.position + 1}</a></p></div>`).join("")}</div>`;
   } else {
     $("latestPreview").innerHTML =
-      `<div class="preview-graphic">${j.status === "failed" ? "!" : j.status === "running" ? "◌" : "✣"}</div><h3>${j.status === "running" ? "Generating image…" : j.status === "queued" ? "Waiting in queue…" : j.status === "failed" ? "Generation failed" : "Ready when you are."}</h3><p>${esc(trunc(j.error || j.prompt, 110))}</p>`;
+      `<div class="preview-graphic">${j.status === "failed" ? uiIcon("alert") : j.status === "running" ? uiIcon("loading") : j.status === "queued" ? uiIcon("hourglass") : uiIcon("mask")}</div><h3>${j.status === "running" ? "Generating image…" : j.status === "queued" ? "Waiting in queue…" : j.status === "failed" ? "Generation failed" : "Ready when you are."}</h3><p>${esc(trunc(j.error || j.prompt, 110))}</p>`;
   }
 }

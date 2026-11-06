@@ -52,7 +52,12 @@ export function switchView(name) {
     .forEach((v) => (v.hidden = v.dataset.page !== name));
   document
     .querySelectorAll(".nav-link")
-    .forEach((b) => b.classList.toggle("active", b.dataset.view === name));
+    .forEach((b) => {
+      const isActive = b.dataset.view === name;
+      b.classList.toggle("active", isActive);
+      if (isActive) b.setAttribute("aria-current", "page");
+      else b.removeAttribute("aria-current");
+    });
   $("viewCrumb").textContent =
     {
       overview: "Overview",
@@ -60,7 +65,7 @@ export function switchView(name) {
       studio: "Image Studio",
       jobs: "Jobs",
       gallery: "Gallery",
-      analytics: "Performance",
+      analytics: "Analytics",
       operations: "Operations",
       settings: "Settings",
     }[name] || name;
@@ -85,6 +90,10 @@ export function refreshData(showToast = false) {
     if (S.view === "operations")
       S.audit = await api("/api/control/audit?limit=12");
     renderAll();
+    // First successful refresh ends the skeleton phase (Bundle B).
+    document.body.classList.remove("booting");
+    const overviewAccounts = $("overviewAccounts");
+    if (overviewAccounts) overviewAccounts.setAttribute("aria-busy", "false");
     if (showToast) toast("Everything is up to date.");
   })().finally(() => {
     pendingRefresh = null;

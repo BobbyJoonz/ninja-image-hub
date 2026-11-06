@@ -11,13 +11,21 @@ export const trunc = (v, n = 60) =>
   String(v ?? "").length > n
     ? String(v).slice(0, n - 1) + "…"
     : String(v ?? "");
+/** Stacked, dismissible notifications. Falls back to a no-op without the region. */
 export function toast(message, error = false) {
-  const t = $("toast");
-  t.textContent = message;
-  t.classList.toggle("error", error);
-  t.classList.add("visible");
-  clearTimeout(toast.timer);
-  toast.timer = setTimeout(() => t.classList.remove("visible"), 4200);
+  const region = document.getElementById("toastRegion");
+  if (!region) return;
+  const el = document.createElement("div");
+  el.className = error ? "toast error" : "toast";
+  el.setAttribute("role", error ? "alert" : "status");
+  el.innerHTML =
+    uiIcon(error ? "alert" : "check") +
+    `<span class="toast-msg">${esc(message)}</span>` +
+    `<button type="button" class="toast-close" aria-label="Dismiss notification">${uiIcon("x")}</button>`;
+  el.querySelector(".toast-close").addEventListener("click", () => el.remove());
+  region.appendChild(el);
+  while (region.children.length > 4) region.firstElementChild.remove();
+  setTimeout(() => el.remove(), error ? 8000 : 4500);
 }
 export function compact(v) {
   return Number(v || 0).toLocaleString("en-US");

@@ -39,8 +39,8 @@ v0.6.0 یک انتشار **سخت‌سازی** است، نه افزودن قاب
 
 ## شواهد اجراشده
 
-- `python -m pytest -q` → **۸۳ passed، ۱ skipped** (حدود ۶۰ ثانیه). تست skip مربوط به symlink روی میزبان بدون privilege است.
-- `node --test tests/frontend.test.mjs` → **۳ pass**.
+- `python -m pytest -q` → **۸۴ passed، ۱ skipped** (حدود ۶۰ ثانیه). تست skip مربوط به symlink روی میزبان بدون privilege است.
+- `node --test tests/frontend.test.mjs` → **۵ pass**.
 - `node --check frontend/app.js` و هر ۶ ماژول `frontend/modules/` و `preview/demo.js` → **OK**.
 - E2E زنده روی کد اصلاح‌شده با دروازهٔ جعلیِ سازگار با قرارداد: worker آنلاین و `session: connected`؛ Job با `n=2` → `completed` با **۲ فایل اصلی متمایز**؛ گالری **۲ آیتم**؛ خروجی ZIP با کد **۲۰۰** و امضای **`PK`**؛ kill کردن فرایند worker به‌طور خودکار بازیابی شد و Job بعدی هم `completed` شد. این E2E با دروازهٔ شبیه‌سازی‌شده است، نه ChatGPT Plus واقعی.
 - Chrome واقعی (headless) روی اپلیکیشن واقعی: **۷ ماژول JS** بارگذاری شد، ورود موفق بود و داشبورد رندر شد. پیش از رفع، کلیک Sign in **صفر** درخواست `/api/*` می‌فرستاد و پنل روی پوستهٔ ورود می‌ماند.

@@ -18,4 +18,6 @@ export const S = {
   galleryCursor: null,
   galleryLoaded: false,
   pendingGeneration: null,
+  jobsFilter: "all",
+  jobQuery: "",
 };

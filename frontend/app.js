@@ -9,7 +9,7 @@ import {
   switchView,
   loadGallery,
 } from "./modules/controller.js";
-import { renderAnalytics } from "./modules/views.js";
+import { renderAnalytics, renderJobs } from "./modules/views.js";
 import { onAccountAction, openAdd, initLoginDialog } from "./modules/accounts.js";
 
 initLoginDialog();
@@ -48,7 +48,17 @@ document.body.addEventListener("click", (e) => {
     return;
   }
   const act = e.target.closest("[data-action]");
-  if (act) onAccountAction(act.dataset.action, act.dataset.id);
+  if (act) {
+    onAccountAction(act.dataset.action, act.dataset.id);
+    const menu = act.closest("details.action-menu");
+    if (menu) menu.removeAttribute("open");
+    return;
+  }
+  // Clicking anywhere else closes any open account action menu.
+  if (!e.target.closest(".action-menu"))
+    document
+      .querySelectorAll("details.action-menu[open]")
+      .forEach((d) => d.removeAttribute("open"));
 });
 ["headerNew", "accountsAdd"].forEach((id) =>
   $(id).addEventListener("click", openAdd),
@@ -99,14 +109,19 @@ $("addForm").addEventListener("submit", async (e) => {
     toast(err.message, true);
   }
 });
-document.querySelectorAll("[data-ratio]").forEach((b) =>
+document.querySelectorAll("[data-ratio]").forEach((b) => {
+  b.setAttribute("aria-pressed", String(b.classList.contains("active")));
   b.addEventListener("click", () => {
     S.ratio = b.dataset.ratio;
     document
       .querySelectorAll("[data-ratio]")
-      .forEach((a) => a.classList.toggle("active", a === b));
-  }),
-);
+      .forEach((a) => {
+        const active = a === b;
+        a.classList.toggle("active", active);
+        a.setAttribute("aria-pressed", String(active));
+      });
+  });
+});
 $("genPrompt").addEventListener("input", () => {
   $("charCount").textContent = $("genPrompt").value.length + " / 4000";
 });
@@ -168,20 +183,25 @@ $("generateForm").addEventListener("submit", async (e) => {
     button.disabled = false;
   }
 });
-document.querySelectorAll("[data-hours]").forEach((button) =>
+document.querySelectorAll("[data-hours]").forEach((button) => {
+  button.setAttribute("aria-pressed", String(button.classList.contains("active")));
   button.addEventListener("click", async () => {
     S.analyticsHours = Number(button.dataset.hours);
     document
       .querySelectorAll("[data-hours]")
-      .forEach((b) => b.classList.toggle("active", b === button));
+      .forEach((b) => {
+        const active = b === button;
+        b.classList.toggle("active", active);
+        b.setAttribute("aria-pressed", String(active));
+      });
     try {
       S.analytics = await api("/api/analytics?hours=" + S.analyticsHours);
       renderAnalytics();
     } catch (e) {
       toast(e.message, true);
     }
-  }),
-);
+  });
+});
 $("controlForm").addEventListener("input", () => {
   $("controlForm").dataset.dirty = "yes";
   $("controlDirty").textContent =
@@ -241,6 +261,32 @@ $("toggleDispatch").addEventListener("click", async () => {
   }
 });
 document.addEventListener("session-expired", showAuth);
+// Jobs toolbar: status chips + live search (client-side over the last 100 jobs).
+let jobSearchTimer = null;
+const applyJobFilter = () => {
+  S.jobsFilter = $("jobFilters")?.querySelector(".chip.active")?.dataset.status || "all";
+  S.jobQuery = $("jobSearch")?.value || "";
+  renderJobs();
+};
+$("jobFilters")?.addEventListener("click", (e) => {
+  const chip = e.target.closest(".chip");
+  if (!chip) return;
+  $("jobFilters")
+    .querySelectorAll(".chip")
+    .forEach((c) => {
+      const active = c === chip;
+      c.classList.toggle("active", active);
+      c.setAttribute("aria-pressed", String(active));
+    });
+  applyJobFilter();
+});
+$("jobFilters")
+  ?.querySelectorAll(".chip")
+  .forEach((c) => c.setAttribute("aria-pressed", String(c.classList.contains("active"))));
+$("jobSearch")?.addEventListener("input", () => {
+  clearTimeout(jobSearchTimer);
+  jobSearchTimer = setTimeout(applyJobFilter, 120);
+});
 $("galleryRefresh").addEventListener("click", () =>
   loadGallery(true).catch((e) => toast(e.message, true)),
 );

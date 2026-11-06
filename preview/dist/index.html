@@ -5,9 +5,12 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Ninja Image Hub — Multi-Account Studio</title>
     <meta name="theme-color" content="#07101c" />
+    <link rel="icon" type="image/svg+xml" href="/static/icons/favicon.svg" />
+    <meta name="color-scheme" content="dark" />
     <link rel="stylesheet" href="/static/style.css" />
   <script src="/demo.js"></script></head>
-  <body>
+  <body class="booting">
+    <a class="skip-link" href="#mainContent">Skip to main content</a>
     <div class="auth-screen" id="authScreen">
       <div class="auth-panel">
         <div class="brand mark">
@@ -82,7 +85,7 @@
           </button>
         </div>
       </aside>
-      <main class="main">
+      <main class="main" id="mainContent" tabindex="-1">
         <header class="topbar">
           <div class="crumb">
             NINJA IMAGE <span>/</span> <strong id="viewCrumb">Overview</strong>
@@ -167,7 +170,7 @@
                 Manage accounts <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-arrow-up-right"></use></svg>
               </button>
             </div>
-            <div id="overviewAccounts" class="account-grid"></div>
+            <div id="overviewAccounts" class="account-grid" aria-busy="true"><div class="account-card skeleton-card" aria-hidden="true"></div><div class="account-card skeleton-card" aria-hidden="true"></div></div>
             <div id="runtimeNotice" class="notice warning"></div>
             <div class="notice info" id="queueNotice">
               Queue telemetry loading…
@@ -178,7 +181,7 @@
             <div class="eyebrow">INTELLIGENCE / 02</div>
             <div class="title-row">
               <div>
-                <h1>Performance<span class="dot">.</span></h1>
+                <h1>Analytics<span class="dot">.</span></h1>
                 <p class="subtitle">
                   Observed output, errors and queue pressure. Never estimated as
                   actual generation.
@@ -209,9 +212,8 @@
                 </div>
                 <div
                   id="analyticsChart"
-                  class="bar-chart"
-                  role="img"
-                  aria-label="Stored images by time bucket"
+                  class="chart-mount"
+                  aria-live="polite"
                 ></div>
                 <div class="chart-foot">
                   <span id="chartFrom">—</span><span id="chartTo">—</span>
@@ -637,6 +639,7 @@
                     High/Medium/Low model setting. The gateway cannot guarantee
                     render quality. Original images are preserved byte-for-byte.
                   </p>
+                  <div class="generate-bar">
                   <button
                     type="submit"
                     class="btn primary full"
@@ -644,6 +647,11 @@
                   >
                     <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-sparkles"></use></svg> Queue images <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-arrow-right"></use></svg>
                   </button>
+                  <p class="fine-print">
+                    Queuing is asynchronous: the selected account picks the job up
+                    on its next dispatch slot under the configured caps.
+                  </p>
+                  </div>
                 </form>
                 <p class="fine-print">
                   Generation uses an unofficial third-party browser gateway,
@@ -684,8 +692,21 @@
               <button class="btn secondary" id="jobsRefresh"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-refresh"></use></svg> Refresh</button>
             </div>
             <div class="panel table-panel">
+              <div class="jobs-toolbar">
+                <div class="filter-chips" id="jobFilters" role="group" aria-label="Filter jobs by status">
+                  <button type="button" class="chip active" data-status="all">All</button>
+                  <button type="button" class="chip" data-status="active">Active</button>
+                  <button type="button" class="chip" data-status="completed">Completed</button>
+                  <button type="button" class="chip" data-status="problems">Problems</button>
+                </div>
+                <label class="search-field">
+                  <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-search"></use></svg>
+                  <input id="jobSearch" type="search" placeholder="Search prompt, account or job id" autocomplete="off" aria-label="Search jobs" />
+                </label>
+                <span class="job-count" id="jobCount">—</span>
+              </div>
               <div class="table-wrap">
-                <table>
+                <table class="jobs-table">
                   <thead>
                     <tr>
                       <th>JOB / PROMPT</th>
@@ -786,7 +807,7 @@ GET /v1/jobs/&lt;job UUID&gt;</pre>
         </div>
       </main>
     </div>
-    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <div class="toast-region" id="toastRegion" role="status" aria-live="polite" aria-atomic="false"></div>
     <dialog id="addDialog" class="modal">
       <form id="addForm">
         <div class="modal-top">
@@ -897,7 +918,7 @@ GET /v1/jobs/&lt;job UUID&gt;</pre>
           when the session expires. Saved under the account data directory with file
           mode 0600; the panel never shows them again. Use a dedicated account.
         </p>
-        <form id="autoLoginForm">
+        <form id="autoLoginForm" novalidate>
           <label for="autoEmail">ChatGPT email</label
           ><input
             id="autoEmail"
@@ -941,7 +962,7 @@ GET /v1/jobs/&lt;job UUID&gt;</pre>
     <dialog id="logsDialog" class="modal log-modal">
       <div class="modal-top">
         <span class="modal-tag">WORKER LOGS</span
-        ><button class="close-btn" id="closeLogs"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-x"></use></svg></button>
+        ><button class="close-btn" id="closeLogs" aria-label="Close logs"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-x"></use></svg></button>
       </div>
       <h2 id="logsTitle">Worker logs</h2>
       <pre id="logsContent">Loading…</pre>

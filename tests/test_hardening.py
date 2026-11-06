@@ -533,6 +533,42 @@ def test_icons_are_bundled_locally_and_complete():
     assert html.count("sprite.svg#lc-") >= 8
 
 
+def test_ui_bundle_contract():
+    """Bundle A+B: skip link, favicon, labels, chart empty state, jobs toolbar, toasts."""
+    html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
+    css = (ROOT / "frontend" / "style.css").read_text(encoding="utf-8")
+    views = (ROOT / "frontend" / "modules" / "views.js").read_text(encoding="utf-8")
+
+    # Bundle A: accessibility, favicon, dialog validation, naming, chart empty state
+    assert 'class="skip-link" href="#mainContent"' in html
+    assert 'id="mainContent"' in html and 'tabindex="-1"' in html
+    assert 'rel="icon"' in html and "favicon.svg" in html
+    assert 'name="theme-color"' in html
+    assert 'id="closeLogs" aria-label="Close logs"' in html
+    assert 'id="autoLoginForm" novalidate' in html
+    assert "<h1>Analytics<span" in html and "Performance" not in html
+    assert "Performance" not in (
+        ROOT / "frontend" / "modules" / "controller.js"
+    ).read_text(encoding="utf-8")
+    assert "chart-empty" in views and "chartHasData" in views
+    assert "chart-y" in css and ".chart-body" in css and ".skip-link" in css
+
+    # Bundle B: jobs toolbar, responsive cards, account menu, sticky CTA, skeletons, toasts
+    assert 'id="jobFilters"' in html and 'id="jobSearch"' in html
+    assert 'class="jobs-table"' in html and 'id="jobCount"' in html
+    assert "data-label=" in views and "filterJobs" in views
+    assert "jobs-table td::before" in css
+    assert "action-menu" in views and ".action-menu-list" in css
+    assert 'class="generate-bar"' in html and ".generate-bar" in css
+    assert "skeleton-card" in html and ".skeleton-card" in css
+    assert 'id="toastRegion"' in html
+    assert 'id="toast"' not in html  # the old single-toast node is gone
+    assert ".toast-region" in css and ".toast-close" in css
+    assert "uiIcon(" in (
+        ROOT / "frontend" / "modules" / "dom.js"
+    ).read_text(encoding="utf-8")
+
+
 def test_icon_sprite_regenerator_reports_success():
     result = subprocess.run(
         [sys.executable, str(ROOT / "scripts" / "build_icons.py"), "--check"],

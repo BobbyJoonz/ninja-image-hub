@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {S} from '../frontend/modules/state.js';
-import {renderLatest} from '../frontend/modules/views.js';
+import {filterJobs, chartHasData, renderLatest} from '../frontend/modules/views.js';
 import {uniqueId} from '../frontend/modules/dom.js';
 
 const elements=new Map(['latestStatus','latestPreview'].map(id=>[id,{textContent:'',innerHTML:''}]));
@@ -21,6 +21,29 @@ test('unchanged image outputs do not replace the preview DOM on each poll',()=>{
   elements.get('latestPreview').innerHTML='same DOM sentinel';
   renderLatest();
   assert.equal(elements.get('latestPreview').innerHTML,'same DOM sentinel');
+});
+
+test('job filters narrow by status and free-text query',()=>{
+  const jobs=[
+    {id:'a1111111',prompt:'green triangle',account_id:'acc1',status:'completed'},
+    {id:'b2222222',prompt:'blue circle',account_id:'acc2',status:'failed'},
+    {id:'c3333333',prompt:'night city',account_id:'acc1',status:'queued'},
+  ];
+  const names={acc1:'Main',acc2:'Secondary'};
+  assert.equal(filterJobs(jobs,'all','',names).length,3);
+  assert.deepEqual(filterJobs(jobs,'active','',names).map(j=>j.id),['c3333333']);
+  assert.deepEqual(filterJobs(jobs,'problems','',names).map(j=>j.id),['b2222222']);
+  assert.deepEqual(filterJobs(jobs,'all','circle',names).map(j=>j.id),['b2222222']);
+  assert.deepEqual(filterJobs(jobs,'all','secondary',names).map(j=>j.id),['b2222222']);
+  assert.deepEqual(filterJobs(jobs,'completed','main',names).map(j=>j.id),['a1111111']);
+  assert.equal(filterJobs(jobs,'all','no-such-job',names).length,0);
+});
+
+test('chart reports data only when a bucket has images',()=>{
+  assert.equal(chartHasData([]),false);
+  assert.equal(chartHasData([{images:0},{images:0}]),false);
+  assert.equal(chartHasData([{images:0},{images:2}]),true);
+  assert.equal(chartHasData(undefined),false);
 });
 
 test('submission IDs remain valid UUIDs in the HTTP preview fallback',()=>{

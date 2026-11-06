@@ -100,7 +100,7 @@ h3 {
   color: var(--accent);
 }
 .workspace-label {
-  font-size: 10px;
+  font-size: 11px;
   color: #5f748e;
   letter-spacing: 1.6px;
   font-weight: 800;
@@ -250,7 +250,7 @@ h3 {
 }
 .eyebrow {
   color: var(--accent);
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 2px;
   font-weight: 800;
   margin-bottom: 10px;
@@ -327,7 +327,7 @@ h3 {
   z-index: 2;
 }
 .hero-tag {
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 1.7px;
   font-weight: 800;
   color: #b8eea5;
@@ -399,7 +399,7 @@ h3 {
   display: flex;
   justify-content: space-between;
   color: #7d95b0;
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 1.2px;
   font-weight: 800;
 }
@@ -479,7 +479,7 @@ h3 {
   border-radius: 7px;
   padding: 5px 7px;
   color: #a2b4c6;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -603,7 +603,7 @@ h3 {
 .create-panel label,
 .modal label {
   display: block;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 1px;
   color: #a7bbd2;
@@ -733,7 +733,7 @@ td {
 }
 th {
   color: #849ab3;
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.9px;
 }
 td {
@@ -751,7 +751,7 @@ tr:last-child td {
 }
 .job-id {
   color: #718ba5;
-  font-size: 10px;
+  font-size: 11px;
   margin-top: 5px;
 }
 .gallery-grid {
@@ -816,7 +816,7 @@ tr:last-child td {
 }
 .code-label {
   color: #8ba5bc;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 1px;
   margin: 16px 0 7px;
@@ -906,7 +906,7 @@ code {
 }
 .auth-foot {
   color: #536880;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 1px;
   text-align: center;
@@ -916,32 +916,6 @@ code {
   color: #eea7ad;
   margin-top: 10px;
   min-height: 18px;
-}
-.toast {
-  position: fixed;
-  right: 24px;
-  bottom: 24px;
-  z-index: 60;
-  background: #214c3b;
-  color: #e0ffe7;
-  border: 1px solid #558b6b;
-  padding: 13px 19px;
-  border-radius: 10px;
-  box-shadow: 0 15px 40px #0009;
-  opacity: 0;
-  transform: translateY(20px);
-  transition: 0.2s;
-  pointer-events: none;
-  max-width: min(500px, 90vw);
-}
-.toast.visible {
-  opacity: 1;
-  transform: translateY(0);
-}
-.toast.error {
-  background: #4c2630;
-  border-color: #9a525f;
-  color: #ffdbdf;
 }
 .modal {
   background: #101f33;
@@ -972,7 +946,7 @@ code {
   justify-content: space-between;
 }
 .modal-tag {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--accent);
   letter-spacing: 1.5px;
   font-weight: 800;
@@ -1113,7 +1087,7 @@ code {
     font-size: 29px;
   }
   .stat-label {
-    font-size: 9px;
+    font-size: 10px;
   }
   .title-row {
     align-items: flex-start;
@@ -1138,7 +1112,7 @@ code {
     font-size: 11px;
   }
   .crumb {
-    font-size: 9px;
+    font-size: 10px;
   }
   .modal {
     padding: 20px;
@@ -1251,7 +1225,7 @@ textarea:focus-visible {
   background: linear-gradient(155deg, #162d2d, #17283b);
 }
 .metric-kicker {
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 1.5px;
   font-weight: 800;
   color: #a9c5be;
@@ -1293,7 +1267,7 @@ textarea:focus-visible {
   transition: width 0.6s ease;
 }
 .hero-metrics small {
-  font-size: 10px;
+  font-size: 11px;
   color: #9ab3a8;
   line-height: 1.7;
 }
@@ -1349,7 +1323,7 @@ textarea:focus-visible {
 }
 .signal-stat small {
   color: #738fa2;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.5;
 }
 .analytics-layout {
@@ -1426,7 +1400,7 @@ textarea:focus-visible {
   background: #e8ffae;
 }
 .bar-count {
-  font-size: 9px;
+  font-size: 10px;
   color: #d6eab4;
   opacity: 0;
   position: absolute;
@@ -1440,7 +1414,7 @@ textarea:focus-visible {
   display: flex;
   justify-content: space-between;
   color: #738ba2;
-  font-size: 10px;
+  font-size: 11px;
   margin: 13px 0;
 }
 .chart-rule {
@@ -1516,7 +1490,7 @@ textarea:focus-visible {
   display: block;
   color: #708aa3;
   margin-top: 6px;
-  font-size: 10px;
+  font-size: 11px;
 }
 .incident-list {
   display: grid;
@@ -1549,7 +1523,7 @@ textarea:focus-visible {
 }
 .incident small {
   color: #7890a6;
-  font-size: 10px;
+  font-size: 11px;
   white-space: nowrap;
 }
 .operations-layout {
@@ -1633,7 +1607,7 @@ textarea:focus-visible {
   border-radius: 9px;
 }
 .controls-grid small {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 400;
   color: #8097aa;
   line-height: 1.6;
@@ -1682,7 +1656,7 @@ textarea:focus-visible {
   color: #c9deec;
 }
 .audit-item small {
-  font-size: 10px;
+  font-size: 11px;
   color: #7991a6;
 }
 /* Calm motion; functional confirmations are always textual. */
@@ -1813,7 +1787,7 @@ textarea:focus-visible {
 .asset-kicker {
   display: flex;
   justify-content: space-between;
-  font-size: 9px;
+  font-size: 10px;
   color: #8fcaa6;
   letter-spacing: 1.3px;
   margin-bottom: 12px;
@@ -1909,7 +1883,7 @@ textarea:focus-visible {
     min-height: 38px;
   }
   .preview-banner {
-    font-size: 10px;
+    font-size: 11px;
     padding: 9px;
   }
   .title-row {
@@ -1962,7 +1936,7 @@ textarea:focus-visible {
   line-height: 1.55;
 }
 .badge-soft {
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--accent2);
@@ -2061,5 +2035,372 @@ textarea:focus-visible {
   .sidebar .nav-link .icon {
     width: 21px;
     height: 21px;
+  }
+}
+
+
+/* ---------- Bundle A: accessibility, chart axis and empty state ---------- */
+.skip-link {
+  position: absolute;
+  left: 12px;
+  top: -60px;
+  z-index: 100;
+  background: #b9f85c;
+  color: #08131a;
+  font-weight: 800;
+  font-size: 12px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  transition: top 0.15s ease;
+}
+.skip-link:focus {
+  top: 12px;
+}
+.chart-body {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  gap: 8px;
+  align-items: stretch;
+  margin-top: 14px;
+}
+.chart-y {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 218px;
+  padding: 10px 0 0;
+  color: #7d95b0;
+  font-size: 11px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.chart-empty {
+  height: 218px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px dashed #2c475f;
+  border-radius: 12px;
+  background: #0d1a2b;
+  color: #9db2c8;
+  text-align: center;
+  padding: 18px;
+}
+.chart-empty .icon {
+  width: 26px;
+  height: 26px;
+  color: #648679;
+}
+.chart-empty strong {
+  color: #d7e6f4;
+  font-size: 13px;
+}
+.chart-empty p {
+  margin: 0;
+  font-size: 12px;
+  max-width: 340px;
+}
+
+/* ---------- Bundle B: jobs toolbar, chips and clickable rows ---------- */
+.jobs-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid #1d3148;
+}
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.chip {
+  border: 1px solid #2e4964;
+  background: #12223a;
+  color: #a9bed4;
+  border-radius: 999px;
+  padding: 7px 13px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.chip:hover {
+  border-color: #4f7a8c;
+  color: #e3eefb;
+}
+.chip.active {
+  background: #1d3b31;
+  border-color: #4d7a49;
+  color: #c9fb84;
+}
+.search-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 220px;
+  min-width: 190px;
+  border: 1px solid #2e4964;
+  background: #0f1e30;
+  border-radius: 9px;
+  padding: 8px 12px;
+  color: #7d95b0;
+}
+.search-field input {
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: #e8eefb;
+  font-size: 12px;
+  width: 100%;
+}
+.job-count {
+  color: #8ba1b8;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  margin-left: auto;
+}
+.jobs-table tbody tr:hover {
+  background: #101f33;
+}
+@media (max-width: 720px) {
+  table.jobs-table {
+    min-width: 0;
+    display: block;
+  }
+  .jobs-table thead {
+    display: none;
+  }
+  .jobs-table tbody,
+  .jobs-table tr,
+  .jobs-table td {
+    display: block;
+    width: 100%;
+  }
+  .jobs-table tr {
+    border: 1px solid #223a52;
+    border-radius: 12px;
+    margin: 0 12px 10px;
+    padding: 12px 14px;
+    background: #0f1e30;
+  }
+  .jobs-table td {
+    border: 0;
+    padding: 5px 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 14px;
+    font-size: 12px;
+  }
+  .jobs-table td::before {
+    content: attr(data-label);
+    color: #849ab3;
+    font-size: 11px;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    flex: 0 0 auto;
+  }
+  .jobs-table td[data-label="JOB / PROMPT"] {
+    display: block;
+    padding-top: 0;
+  }
+  .jobs-table td[data-label="JOB / PROMPT"]::before {
+    display: block;
+    margin-bottom: 4px;
+  }
+  .jobs-table td[data-label="JOB / PROMPT"] .job-prompt {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    max-width: none;
+  }
+  .jobs-table td[colspan] {
+    display: block;
+    text-align: center;
+  }
+  .jobs-table td[colspan]::before {
+    display: none;
+  }
+  .jobs-table td:last-child {
+    justify-content: flex-end;
+    padding-top: 8px;
+  }
+  .jobs-table td:last-child::before {
+    display: none;
+  }
+  .jobs-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .search-field {
+    flex: 0 0 auto;
+    width: 100%;
+    min-width: 0;
+  }
+  .job-count {
+    margin-left: 0;
+  }
+}
+
+/* ---------- Bundle B: account overflow menu ---------- */
+.action-menu {
+  position: relative;
+  display: inline-flex;
+}
+.action-menu > summary {
+  list-style: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  height: 33px;
+  padding: 0 9px;
+  border: 1px solid #30465e;
+  border-radius: 7px;
+  background: #15253b;
+  color: #bbd0e5;
+}
+.action-menu > summary::-webkit-details-marker {
+  display: none;
+}
+.action-menu[open] > summary,
+.action-menu > summary:hover {
+  border-color: #5f8a91;
+  color: #e6f4ff;
+}
+.action-menu-list {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 25;
+  min-width: 178px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  background: #122238;
+  border: 1px solid #34536b;
+  border-radius: 10px;
+  box-shadow: 0 18px 44px #000a;
+}
+.action-menu-list .small-action {
+  width: 100%;
+  justify-content: flex-start;
+}
+
+/* ---------- Bundle B: sticky generate bar ---------- */
+.generate-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 0 2px;
+  background: linear-gradient(180deg, transparent, #0c1a2a 30%);
+}
+.generate-bar .fine-print {
+  margin: 0;
+}
+
+/* ---------- Bundle B: skeletons and empty states ---------- */
+.skeleton-card {
+  min-height: 158px;
+  border: 1px solid #1d3148;
+  border-radius: 14px;
+  background: linear-gradient(100deg, #101f2d 30%, #17293d 50%, #101f2d 70%);
+  background-size: 220% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+@keyframes shimmer {
+  to {
+    background-position: -220% 0;
+  }
+}
+body.booting .stat-value {
+  color: transparent;
+  border-radius: 8px;
+  background: linear-gradient(100deg, #101f2d 30%, #17293d 50%, #101f2d 70%);
+  background-size: 220% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+/* ---------- Bundle B: stacked toasts with icons and dismiss ---------- */
+.toast-region {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  align-items: flex-end;
+  pointer-events: none;
+}
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  max-width: min(460px, 90vw);
+  background: #17362b;
+  color: #ddffe8;
+  border: 1px solid #4f8465;
+  border-radius: 11px;
+  padding: 12px 12px 12px 14px;
+  box-shadow: 0 16px 44px #000a;
+  font-size: 12.5px;
+  line-height: 1.45;
+  animation: toast-in 0.18s ease-out;
+}
+.toast .icon {
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  flex: 0 0 auto;
+}
+.toast.error {
+  background: #3d2028;
+  border-color: #93515f;
+  color: #ffdbe0;
+}
+.toast-msg {
+  flex: 1 1 auto;
+  overflow-wrap: anywhere;
+}
+.toast-close {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  opacity: 0.7;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+}
+.toast-close:hover {
+  opacity: 1;
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+@media (max-width: 520px) {
+  .toast-region {
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    align-items: stretch;
+  }
+  .toast {
+    max-width: none;
   }
 }
