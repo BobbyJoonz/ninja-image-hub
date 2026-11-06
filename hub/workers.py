@@ -274,6 +274,71 @@ def _patch_project_url(worker):
     return True
 
 
+PAGES_PATCH_MARKER = "ninja:pages-routes"
+
+DIAGNOSTICS_JS = r"""// ninja:pages-routes — diagnostics for project routing.
+// GET /login/url   -> URL/title of the page the remote login is currently driving.
+// GET /login/pages -> every page open in the browser context (to prove where a
+//                     generation chat landed: normal list /c/<id> vs project
+//                     /g/g-p-.../c/<id>).
+router.get('/login/url', async (req, res) => {
+  try {
+    await enterManualLogin({ acquire: false });
+    const page = await getLoginPage();
+    res.json({ url: page.url(), title: await page.title().catch(() => '') });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+router.get('/login/pages', async (req, res) => {
+  try {
+    await enterManualLogin({ acquire: false });
+    const ctx = await getContext();
+    const pages = ctx.pages().filter((page) => page && !page.isClosed());
+    res.json({ pages: pages.map((page) => ({ url: page.url() })) });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+module.exports = router;"""
+
+# The first release wrote enterManualLogin() into a variable; upgrade those copies.
+BROKEN_URL_ROUTE = (
+    "    const p = await enterManualLogin({ acquire: false });\n"
+    "    res.json({ url: p.url(), title: await p.title().catch(() => '') });"
+)
+FIXED_URL_ROUTE = (
+    "    await enterManualLogin({ acquire: false });\n"
+    "    const page = await getLoginPage();\n"
+    "    res.json({ url: page.url(), title: await page.title().catch(() => '') });"
+)
+
+
+def _patch_login_diagnostics(worker):
+    """Expose the login page URL and every open page of the browser context.
+
+    Lets the operator confirm that generation chats land inside the configured project
+    and read the project URL after opening it. Guarded: any upstream change leaves the
+    worker untouched.
+    """
+    path = pathlib.Path(worker) / "src" / "routes" / "login.js"
+    if not path.is_file():
+        return False
+    content = path.read_text(encoding="utf-8")
+    if PAGES_PATCH_MARKER in content:
+        if BROKEN_URL_ROUTE in content:
+            path.write_text(content.replace(BROKEN_URL_ROUTE, FIXED_URL_ROUTE, 1), encoding="utf-8")
+            return True
+        return False
+    anchor = "module.exports = router;"
+    if content.count(anchor) != 1:
+        return False
+    path.write_text(content.replace(anchor, DIAGNOSTICS_JS, 1), encoding="utf-8")
+    return True
+
+
 def ensure_worker_copy(ctx, acc):
     if not ctx.runtime_installed():
         raise RuntimeError(
@@ -303,6 +368,7 @@ def ensure_worker_copy(ctx, acc):
     # Apply the gateway guards on every start, so existing workspaces get them too.
     _patch_popup_follow(worker)
     _patch_project_url(worker)
+    _patch_login_diagnostics(worker)
     return worker
 
 

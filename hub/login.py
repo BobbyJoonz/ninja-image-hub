@@ -105,7 +105,7 @@ async def upstream_login_call(ctx, account_id, action, data=None):
             url = (
                 ctx.upstream(acc) + "/login" + ("/" + action if action != "init" else "")
             )
-            method = "GET" if action in ("screenshot", "init") else "POST"
+            method = "GET" if action in ("screenshot", "init", "url", "pages") else "POST"
             res = await client.request(
                 method, url, headers=headers, json=data if method == "POST" else None
             )
@@ -223,3 +223,21 @@ async def remote_save(ctx, account_id: str):
         "blocker": blocker,
         "note": notes.get(session, notes["unknown"]),
     }
+
+async def remote_url(ctx, account_id: str):
+    """Where the remote login page currently points (diagnostics / project discovery)."""
+    response = await ctx.upstream_login_call(account_id, "url")
+    try:
+        return response.json()
+    except ValueError:
+        raise HTTPException(502, "Gateway returned an invalid diagnostics payload.")
+
+
+async def remote_pages(ctx, account_id: str):
+    """Every page open in the worker context: proves where generation chats land."""
+    response = await ctx.upstream_login_call(account_id, "pages")
+    try:
+        return response.json()
+    except ValueError:
+        raise HTTPException(502, "Gateway returned an invalid diagnostics payload.")
+

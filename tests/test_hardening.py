@@ -795,6 +795,47 @@ def test_project_url_patch_is_idempotent_and_skips_unknown_upstream(tmp_path):
     assert chatgpt.read_text(encoding="utf-8") == "// upstream changed\n"
 
 
+
+def test_login_diagnostics_patch_is_idempotent_and_upgrades_old_copies(tmp_path):
+    """/login/url and /login/pages are how project routing is verified."""
+    from hub.workers import _patch_login_diagnostics
+
+    worker = tmp_path / "gateway"
+    routes = worker / "src" / "routes"
+    routes.mkdir(parents=True)
+    login_js = routes / "login.js"
+    login_js.write_text(
+        "const express = require('express');\nmodule.exports = router;\n",
+        encoding="utf-8",
+    )
+    assert _patch_login_diagnostics(worker) is True
+    patched = login_js.read_text(encoding="utf-8")
+    assert "/login/url" in patched and "/login/pages" in patched
+    assert patched.count("module.exports = router;") == 1
+    assert _patch_login_diagnostics(worker) is False  # idempotent
+
+    # A copy written by the first release called enterManualLogin() on the page variable.
+    login_js.write_text(
+        "// ninja:pages-routes\n"
+        "router.get('/login/url', async (req, res) => {\n"
+        "  try {\n"
+        "    const p = await enterManualLogin({ acquire: false });\n"
+        "    res.json({ url: p.url(), title: await p.title().catch(() => '') });\n"
+        "  } catch (err) { res.status(500).json({ error: err.message }); }\n"
+        "});\n"
+        "module.exports = router;\n",
+        encoding="utf-8",
+    )
+    assert _patch_login_diagnostics(worker) is True
+    upgraded = login_js.read_text(encoding="utf-8")
+    assert "const page = await getLoginPage();" in upgraded
+    assert "const p = await enterManualLogin" not in upgraded
+
+    # Unknown upstream: never touch the file.
+    login_js.write_text("// totally different\n", encoding="utf-8")
+    assert _patch_login_diagnostics(worker) is False
+
+
 def test_worker_command_gives_every_linux_worker_its_own_xvfb():
     """A headed browser on a server needs a virtual display — one per worker, never shared."""
     from hub.workers import display_mode, worker_command

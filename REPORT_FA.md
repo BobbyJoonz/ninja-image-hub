@@ -111,6 +111,6 @@ v0.7.0 یک انتشار **سخت‌سازی + بهره‌برداری** است�
 | اندازه‌گیری ظرفیت | `scripts/capacity_report.py` (read-only + probe دومرحله‌ای) | تست percentile/summarize |
 | تنظیمات زنده | چهار تنظیم جدید در `control_settings` + Operations + `/api/settings` | تست اعتبارسنجی/ماندگاری |
 
-**اعداد تست:** `pytest` → **۹۹ passed، ۱ skipped**؛ `node --test` → **۶ pass**؛ `doctor.py` و `build_icons.py --check` سبز؛ `preview/dist` byte-identical.
+**اعداد تست:** `pytest` → **۱۰۰ passed، ۱ skipped**؛ `node --test` → **۶ pass**؛ `doctor.py` و `build_icons.py --check` سبز؛ `preview/dist` byte-identical.
 
 **هنوز تأییدنشده (باید با اکانت واقعی سنجیده شود):** نرخ واقعی ۱۰ اکانت و ۵۰۰ تصویر/۵ ساعت. ابزار اندازه‌گیری آماده است (`scripts/capacity_report.py`)، اما هیچ عدد واقعی provider تا اجرای آن روی سرور در این گزارش ثبت نمی‌شود.
