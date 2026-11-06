@@ -242,7 +242,7 @@ def test_health_reports_disk_and_unresolved(loaded, monkeypatch):
     )
     monkeypatch.setattr(ctx, "setting", _settings(min_free_disk_mb=500))
     health = client.get("/api/health").json()
-    assert health["version"].startswith("0.7")
+    assert health["version"] == ctx.app.version
     assert health["disk_free_mb"] == 100
     assert health["disk_low"] is True
     assert health["unresolved_unknown"] == 0

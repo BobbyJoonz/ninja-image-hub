@@ -105,7 +105,7 @@ async def upstream_login_call(ctx, account_id, action, data=None):
             url = (
                 ctx.upstream(acc) + "/login" + ("/" + action if action != "init" else "")
             )
-            method = "GET" if action in ("screenshot", "init", "url", "pages", "plan") else "POST"
+            method = "GET" if action in ("screenshot", "init", "url", "pages", "plan", "workspace", "settings") else "POST"
             res = await client.request(
                 method, url, headers=headers, json=data if method == "POST" else None
             )
@@ -265,3 +265,12 @@ async def remote_plan(ctx, account_id: str):
         )
     ctx.save_detected_plan(account_id, plan)
     return plan
+
+
+async def remote_settings_probe(ctx, account_id: str):
+    """Raw Settings -> Subscription text as rendered in the worker browser."""
+    response = await ctx.upstream_login_call(account_id, "settings")
+    try:
+        return response.json()
+    except ValueError:
+        raise HTTPException(502, "Gateway returned an invalid settings payload.")

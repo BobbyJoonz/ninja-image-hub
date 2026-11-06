@@ -122,6 +122,7 @@ def create_app():
         "remote_pages",
         "remote_plan_probe",
         "remote_plan",
+        "remote_settings_probe",
     ):
         setattr(ctx, name, partial(getattr(login, name), ctx))
     for name in (
@@ -286,6 +287,10 @@ def create_app():
         "/api/accounts/{account_id}/plan",
         dependencies=[Depends(ctx.require_admin)],
     )(ctx.remote_plan)
+    app.get(
+        "/api/accounts/{account_id}/remote/settings",
+        dependencies=[Depends(ctx.require_admin)],
+    )(ctx.remote_settings_probe)
     app.post(
         "/api/accounts/{account_id}/remote/click",
         dependencies=[Depends(ctx.csrf_admin)],

@@ -6,6 +6,7 @@ has_active_subscription, expires_at / renews_at / cancels_at, will_renew and whe
 account ever paid. This module normalises that into a small, cacheable summary.
 """
 import json
+import re
 from datetime import datetime, timedelta, timezone
 
 PLAN_MATCHERS = (
@@ -104,3 +105,101 @@ def summary(account):
         return None
     data["days_left"] = _days_left(_parse_dt(data.get("ends_at")))
     return data
+
+PLAN_RANK = {
+    "unknown": -1,
+    "free": 0,
+    "guest": 0,
+    "plus": 1,
+    "pro": 2,
+    "business": 3,
+    "team": 3,
+    "enterprise": 4,
+}
+
+SETTINGS_PLAN_WORDS = (
+    ("enterprise", "enterprise"),
+    ("business", "business"),
+    ("team", "team"),
+    ("pro", "pro"),
+    ("plus", "plus"),
+    ("free", "free"),
+    ("guest", "free"),
+)
+
+
+def parse_settings(payload):
+    """Read the plan from ChatGPT's Settings -> Account page text.
+
+    Workspace members see the workspace plan here (e.g. Business) even when the
+    per-account entitlement endpoint still reports the personal Free plan.
+    """
+    texts = []
+    workspace_id = None
+    if isinstance(payload, dict):
+        for value in payload.values():
+            if not isinstance(value, dict):
+                continue
+            if value.get("workspaceId"):
+                workspace_id = value["workspaceId"]
+            if value.get("text"):
+                texts.append(str(value["text"]))
+    joined = "\n".join(texts)
+    if not joined.strip():
+        return None
+    match = re.search(
+        r"\bPlan\b[^\w]{0,40}?(Enterprise|Business|Team|Pro|Plus|Free|Guest)\b",
+        joined,
+        re.IGNORECASE,
+    )
+    if not match:
+        return None
+    word = match.group(1).lower()
+    plan = next((key for needle, key in SETTINGS_PLAN_WORDS if needle == word), "unknown")
+    return {
+        "plan": plan,
+        "label": match.group(1).title(),
+        "source": "chatgpt-settings-page",
+        "workspace_id": workspace_id,
+        "workspace_plan": plan in ("business", "team", "enterprise"),
+        "checked_at": __import__("datetime").datetime.now(
+            __import__("datetime").timezone.utc
+        ).isoformat(),
+    }
+
+
+def _rank(plan):
+    return PLAN_RANK.get(str(plan or "").lower(), -1)
+
+
+def needs_workspace_check(base):
+    """The account API reports the personal (default) entitlement; workspaces differ."""
+    return str((base or {}).get("plan") or "").lower() in ("free", "guest", "unknown")
+
+
+def merge(base, detected):
+    """Prefer the stronger plan; keep dates and mark the source honestly."""
+    base = dict(base or {})
+    detected = dict(detected or {})
+    if _rank(detected.get("plan")) > _rank(base.get("plan")) or needs_workspace_check(base):
+        if _rank(detected.get("plan")) >= 0:
+            base.update(
+                {
+                    "plan": detected.get("plan"),
+                    "label": detected.get("label") or detected.get("plan"),
+                    "is_free": detected.get("plan") in ("free", "guest"),
+                    "active": detected.get("plan") not in ("free", "guest", "unknown"),
+                    "source": detected.get("source"),
+                    "workspace_plan": bool(detected.get("workspace_plan")),
+                    "workspace_id": detected.get("workspace_id") or base.get("workspace_id"),
+                    "settings_checked_at": detected.get("checked_at"),
+                }
+            )
+    return base
+
+
+def with_workspace_id(base, workspace_id):
+    if workspace_id:
+        base = dict(base or {})
+        base["workspace_id"] = workspace_id
+    return base

@@ -130,6 +130,20 @@ function detailRow(label, valueHtml) {
   return `<div class="detail-row"><span class="detail-label">${label}</span><span class="detail-value">${valueHtml}</span></div>`;
 }
 
+
+function planSourceText(plan) {
+  if (!plan) return "—";
+  if (plan.source === "chatgpt-settings-page")
+    return plan.workspace_plan ? "Settings page (workspace plan)" : "Settings page";
+  if (plan.source === "chatgpt-account-entitlement") return "ChatGPT account API";
+  return esc(plan.source || "—");
+}
+
+function planWorkspaceText(plan) {
+  if (!plan) return "—";
+  if (!plan.workspace_id) return plan.workspace_plan ? "workspace" : "personal";
+  return `<code>${esc(String(plan.workspace_id).slice(0, 8))}</code>${plan.workspace_plan ? " · workspace" : " · personal"}`;
+}
 function planChip(plan, planLabel, checkedAt) {
   if (!plan) {
     const when = checkedAt ? ` · checked ${fmtDay(checkedAt)}` : "";
@@ -146,6 +160,7 @@ function renewalText(plan) {
   if (!plan) return "—";
   if (plan.ends_at) return `${fmtDay(plan.ends_at)} (ends)`;
   if (plan.renews_at) return `${fmtDay(plan.renews_at)} (next renewal)`;
+  if (plan.workspace_plan) return "managed by the workspace — not exposed to members";
   return plan.active ? "unknown" : "no renewal — free plan";
 }
 
@@ -168,6 +183,8 @@ export function openAccountDetails(id) {
         ${detailRow("Plan", planChip(plan, a.plan_label, a.plan_checked_at))}
         ${detailRow("Renewal / expiry", esc(renewalText(plan)))}
         ${detailRow("Plan checked", a.plan_checked_at ? esc(fmtDay(a.plan_checked_at)) : "never")}
+        ${detailRow("Plan source", planSourceText(plan))}
+        ${detailRow("Workspace", planWorkspaceText(plan))}
         ${detailRow("Session", `<span class="pill ${esc(a.session)}">${esc(a.session)}</span>${a.session_blocker ? ` <span class="chip warn">${esc(a.session_blocker)}</span>` : ""}`)}
         ${detailRow("Browser session", plan && plan.session_expires ? esc(fmtDay(plan.session_expires)) : "—")}
         ${detailRow("Project", projectLink(a.project_url))}

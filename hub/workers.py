@@ -154,8 +154,33 @@ def session_probe(ctx, acc):
     return session_snapshot(ctx, acc)["state"]
 
 
+def settings_plan(ctx, acc):
+    """Read the plan from Settings -> Account (workspace plans live here)."""
+    try:
+        response = httpx.get(
+            trust_env=False,
+            url=ctx.upstream(acc) + "/login/settings",
+            headers={"Authorization": f"Bearer {acc['api_secret']}"},
+            timeout=45,
+        )
+    except httpx.RequestError:
+        return None
+    if response.status_code != 200:
+        return None
+    try:
+        payload = response.json()
+    except ValueError:
+        return None
+    return plans.parse_settings(payload)
+
+
 def plan_snapshot(ctx, acc):
-    """Read the plan from ChatGPT through the worker (sync; run off the event loop)."""
+    """Read the plan from ChatGPT through the worker (sync; run off the event loop).
+
+    The per-account entitlement endpoint reports the *personal* plan, so a member of
+    a Business/Pro workspace can look "Free" there. When that happens we ask the
+    Settings page, which shows the active workspace's plan.
+    """
     try:
         response = httpx.get(
             trust_env=False,
@@ -171,7 +196,12 @@ def plan_snapshot(ctx, acc):
         raw = response.json()
     except ValueError:
         return None
-    return plans.parse_entitlement(raw)
+    base = plans.parse_entitlement(raw)
+    if plans.needs_workspace_check(base):
+        detected = settings_plan(ctx, acc)
+        if detected:
+            base = plans.merge(base, detected)
+    return base
 
 
 def plan_snapshot_for_account(ctx, account_id):
@@ -374,6 +404,15 @@ def _patch_login_diagnostics(worker):
 
 PLAN_PROBE_MARKER = "ninja:plan-probe-v2"
 
+_RE_ROUTE_BLOCK = re.compile(r"// ninja:(plan-probe|settings-probe)[\s\S]*?\n\}\);\n")
+
+
+def _strip_probe_routes(content, family):
+    """Remove previously generated route blocks of one family only."""
+    pattern = re.compile(r"// ninja:" + family + r"[\s\S]*?\n\}\);\n")
+    return pattern.sub("", content)
+
+
 PLAN_PROBE_JS = r"""// ninja:plan-probe-v2 — read the signed-in account's plan from ChatGPT's own web API.
 // Runs on any open chatgpt.com page (or a temporary one) and never acquires the
 // manual-login lease, so it is safe during/next to generation jobs. Returns only
@@ -410,7 +449,6 @@ router.get('/login/plan', async (req, res) => {
       };
       await grab('me', '/backend-api/me');
       await grab('check', '/backend-api/accounts/check/v4-2023-04-27');
-      await grab('subscriptions', '/backend-api/subscriptions');
       try {
         const r = await fetch('/api/auth/session', { credentials: 'include' });
         const s = r.status === 200 ? await r.json() : null;
@@ -436,26 +474,59 @@ router.get('/login/plan', async (req, res) => {
 
 module.exports = router;"""
 
-_OLD_PLAN_ROUTE = re.compile(
-    r"// ninja:plan-probe[\s\S]*?router\.get\('/login/plan'[\s\S]*?\n\}\);\n"
-)
+SETTINGS_PROBE_MARKER = "ninja:settings-probe-v2"
+
+SETTINGS_PROBE_JS = r"""// ninja:settings-probe-v2 — read Settings -> Account (plan + workspace id).
+router.get('/login/settings', async (req, res) => {
+  let temp = null;
+  try {
+    const context = await getContext();
+    temp = await context.newPage();
+    await temp.goto('https://chatgpt.com/settings/account', { waitUntil: 'domcontentloaded', timeout: 45000 });
+    await temp.waitForTimeout(4500);
+    const payload = await temp.evaluate(() => {
+      const match = document.cookie.match(/(?:^|;\s*)_account=([^;]+)/);
+      return {
+        workspaceId: match ? decodeURIComponent(match[1]) : null,
+        url: location.href,
+        title: document.title,
+        text: document.body ? document.body.innerText.slice(0, 8000) : '',
+      };
+    });
+    res.json({ page: payload });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  } finally {
+    if (temp && !temp.isClosed()) {
+      try { await temp.close(); } catch (e) {}
+    }
+  }
+});
+
+module.exports = router;"""
 
 
-def _patch_plan_probe(worker):
-    """Add (or upgrade) the read-only plan probe route; never acquires the login lease."""
+def _install_probe(worker, js, marker, family):
     path = pathlib.Path(worker) / "src" / "routes" / "login.js"
     if not path.is_file():
         return False
     content = path.read_text(encoding="utf-8")
-    if PLAN_PROBE_MARKER in content:
+    stripped = _strip_probe_routes(content, family)
+    if marker in stripped and stripped == content:
         return False
     anchor = "module.exports = router;"
-    if content.count(anchor) != 1:
+    if stripped.count(anchor) != 1:
         return False
-    if "ninja:plan-probe" in content:
-        content = _OLD_PLAN_ROUTE.sub("", content, count=1)
-    path.write_text(content.replace(anchor, PLAN_PROBE_JS, 1), encoding="utf-8")
+    path.write_text(stripped.replace(anchor, js, 1), encoding="utf-8")
     return True
+
+
+def _patch_plan_probe(worker):
+    return _install_probe(worker, PLAN_PROBE_JS, PLAN_PROBE_MARKER, "plan-probe")
+
+
+def _patch_settings_probe(worker):
+    return _install_probe(worker, SETTINGS_PROBE_JS, SETTINGS_PROBE_MARKER, "settings-probe")
 
 
 def ensure_worker_copy(ctx, acc):
@@ -489,6 +560,7 @@ def ensure_worker_copy(ctx, acc):
     _patch_project_url(worker)
     _patch_login_diagnostics(worker)
     _patch_plan_probe(worker)
+    _patch_settings_probe(worker)
     return worker
 
 

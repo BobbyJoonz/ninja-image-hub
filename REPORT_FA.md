@@ -129,6 +129,6 @@ v0.7.0 یک انتشار **سخت‌سازی + بهره‌برداری** است�
 | پایش | `effort_below_requested_24h` در `/api/health` + هشدار `watch.py` | تست هشدار |
 | تنظیم زنده | `thinking_effort` enum در Operations + `THINKING_EFFORT` | تست 422 برای مقدار نامعتبر و ماندگاری |
 
-**اعداد تست:** `pytest` → **۱۱۰ passed، ۱ skipped**؛ `node --test` → **۶ pass**.
+**اعداد تست:** `pytest` → **۱۱۲ passed، ۱ skipped**؛ `node --test` → **۶ pass**.
 
 **تأیید با اجرای واقعی (۶ نوامبر ۲۰۲۶):** یک Job واقعی روی اکانت متصل ( single small blue dot..., n=1) در **۸۱ ثانیه** completed شد و Gateway گزارش داد 	hinking_requested=high, 	hinking_applied=high, 	hinking_verified=1, بدون fallback؛ badge در Jobs «High ✓» بود و effort_below_requested_24h=0 ماند. Job آزمایشی بعد از ثبت شاهد پاک شد. شرط باقی‌مانده: اگر اکانت/پلن سطح High را از دست بدهد، هشدار ۲۴ ساعته (watch) و badge «High → ...» آن را نشان می‌دهد.

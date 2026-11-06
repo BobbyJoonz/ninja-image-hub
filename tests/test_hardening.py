@@ -972,6 +972,59 @@ def test_account_payload_exposes_detail_fields(loaded):
     assert row["plan"] is None and row["plan_label"] == "unknown"
 
 
+
+def test_plan_settings_parser_reads_workspace_plan():
+    """A Business workspace member looks Free in the personal account API."""
+    from hub.plans import parse_settings
+
+    payload = {
+        "page": {
+            "workspaceId": "33947977-b48c-4b2a-9f28-031336858b79",
+            "text": "Account\nName\nLINA\nEmail\nx@y\nPlan\nBusiness\nGPT builder profile",
+        }
+    }
+    plan = parse_settings(payload)
+    assert plan["plan"] == "business"
+    assert plan["label"] == "Business"
+    assert plan["workspace_plan"] is True
+    assert plan["workspace_id"].startswith("33947977")
+
+    free = parse_settings({"page": {"text": "Plan\nFree\nOther"}})
+    assert free["plan"] == "free" and free["workspace_plan"] is False
+    assert parse_settings({}) is None
+
+
+def test_plan_merge_prefers_workspace_business_over_personal_free():
+    from hub.plans import merge, needs_workspace_check, parse_entitlement, parse_settings
+
+    base = parse_entitlement(
+        {
+            "check": {
+                "body": {
+                    "accounts": {
+                        "default": {
+                            "account": {"plan_type": "guest", "plan_display_name": "Free"},
+                            "entitlement": {
+                                "subscription_plan": "chatgptguestplan",
+                                "has_active_subscription": False,
+                            },
+                        }
+                    }
+                }
+            }
+        }
+    )
+    assert needs_workspace_check(base) is True
+    detected = parse_settings({"page": {"text": "Plan\nBusiness", "workspaceId": "ws-1"}})
+    merged = merge(base, detected)
+    assert merged["plan"] == "business"
+    assert merged["is_free"] is False
+    assert merged["active"] is True
+    assert merged["source"] == "chatgpt-settings-page"
+    assert merged["workspace_plan"] is True
+    assert merged["workspace_id"] == "ws-1"
+
+
 def test_worker_command_gives_every_linux_worker_its_own_xvfb():
     """A headed browser on a server needs a virtual display — one per worker, never shared."""
     from hub.workers import display_mode, worker_command
