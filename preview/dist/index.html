@@ -11,10 +11,10 @@
     <div class="auth-screen" id="authScreen">
       <div class="auth-panel">
         <div class="brand mark">
-          <span class="ninja-mark">✣</span
+          <span class="ninja-mark"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-mask"></use></svg></span
           ><span>NINJA<span class="brand-accent">/</span>IMAGE</span>
         </div>
-        <div class="auth-icon">◈</div>
+        <div class="auth-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-mask"></use></svg></div>
         <h1>Welcome back.</h1>
         <p>Sign in to manage your private image workers and generation jobs.</p>
         <form id="loginForm">
@@ -27,7 +27,7 @@
             required
             minlength="12"
           /><button type="submit" class="btn primary full">
-            Sign in <span>→</span>
+            Sign in <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-arrow-right"></use></svg>
           </button>
         </form>
         <div id="authError" class="error-text"></div>
@@ -37,72 +37,40 @@
     <div class="app" id="app" hidden>
       <aside class="sidebar">
         <div class="brand">
-          <span class="ninja-mark">✣</span
+          <span class="ninja-mark"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-mask"></use></svg></span
           ><span>NINJA<span class="brand-accent">/</span>IMAGE</span>
         </div>
         <div class="workspace-label">WORKSPACE</div>
         <nav class="navigation" aria-label="Main navigation">
           <button data-view="overview" class="nav-link active">
-            <img
-              class="nav-image"
-              alt=""
-              src="https://cdn.jsdelivr.net/gh/lucide-icons/lucide@main/icons/layout-dashboard.svg"
-            /><span class="icon-fallback" aria-hidden="true">▦</span> Overview
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-overview"></use></svg> Overview
           </button>
           <button data-view="analytics" class="nav-link">
-            <img
-              class="nav-image"
-              alt=""
-              src="https://cdn.jsdelivr.net/gh/lucide-icons/lucide@main/icons/chart-no-axes-combined.svg"
-            /><span class="icon-fallback" aria-hidden="true">▥</span> Analytics
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-analytics"></use></svg> Analytics
           </button>
           <button data-view="operations" class="nav-link">
-            <img
-              class="nav-image"
-              alt=""
-              src="https://cdn.jsdelivr.net/gh/lucide-icons/lucide@main/icons/sliders-horizontal.svg"
-            /><span class="icon-fallback" aria-hidden="true">☷</span>
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-operations"></use></svg>
             Operations
           </button>
           <button data-view="accounts" class="nav-link">
-            <img
-              class="nav-image"
-              alt=""
-              src="https://cdn.jsdelivr.net/gh/lucide-icons/lucide@main/icons/users-round.svg"
-            /><span class="icon-fallback" aria-hidden="true">♙</span> Accounts
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-accounts"></use></svg> Accounts
             <span class="count" id="navAccountCount">0</span>
           </button>
           <button data-view="studio" class="nav-link">
-            <img
-              class="nav-image"
-              alt=""
-              src="https://cdn.jsdelivr.net/gh/lucide-icons/lucide@main/icons/images.svg"
-            /><span class="icon-fallback" aria-hidden="true">◈</span> Image
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-studio"></use></svg> Image
             Studio
           </button>
           <button data-view="jobs" class="nav-link">
-            <img
-              class="nav-image"
-              alt=""
-              src="https://cdn.jsdelivr.net/gh/lucide-icons/lucide@main/icons/list-checks.svg"
-            /><span class="icon-fallback" aria-hidden="true">☑</span> Jobs
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-jobs"></use></svg> Jobs
           </button>
           <button data-view="gallery" class="nav-link">
-            <img
-              class="nav-image"
-              alt=""
-              src="https://cdn.jsdelivr.net/gh/lucide-icons/lucide@main/icons/gallery-horizontal-end.svg"
-            /><span class="icon-fallback" aria-hidden="true">▧</span> Gallery
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-gallery"></use></svg> Gallery
           </button>
         </nav>
         <div class="workspace-label settings-label">SYSTEM</div>
         <nav class="navigation">
           <button data-view="settings" class="nav-link">
-            <img
-              class="nav-image"
-              alt=""
-              src="https://cdn.jsdelivr.net/gh/lucide-icons/lucide@main/icons/settings.svg"
-            /><span class="icon-fallback" aria-hidden="true">⚙</span> Settings
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-settings"></use></svg> Settings
           </button>
         </nav>
         <div class="sidebar-bottom">
@@ -110,7 +78,7 @@
           <button class="profile" id="logoutBtn">
             <span class="avatar">AD</span
             ><span>Administrator<small>Sign out</small></span
-            ><span>↗</span>
+            ><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-arrow-up-right"></use></svg>
           </button>
         </div>
       </aside>
@@ -122,7 +90,7 @@
           <div class="top-actions">
             <span id="runtimeBadge" class="top-badge">● Runtime checking</span
             ><button class="btn secondary sm" id="headerNew">
-              ＋ Add account
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-plus"></use></svg> Add account
             </button>
           </div>
         </header>
@@ -137,7 +105,7 @@
                 </p>
               </div>
               <button class="btn secondary" id="refreshBtn">
-                ↻ Refresh data
+                <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-refresh"></use></svg> Refresh data
               </button>
             </div>
             <div class="ops-strip" id="opsStrip" aria-live="polite">
@@ -145,14 +113,14 @@
             </div>
             <div class="hero">
               <div>
-                <span class="hero-tag">◈ YOUR PRIVATE IMAGE OPERATIONS</span>
+                <span class="hero-tag"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-sparkles"></use></svg> YOUR PRIVATE IMAGE OPERATIONS</span>
                 <h2>Production desk.<br /><em>Every job accounted for.</em></h2>
                 <p>
                   Connect independent browser sessions, create images and review
                   every job from a single control plane.
                 </p>
                 <button class="btn primary" data-go="studio">
-                  Open Image Studio <span>↗</span>
+                  Open Image Studio <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-arrow-up-right"></use></svg>
                 </button>
               </div>
               <div class="hero-art hero-metrics">
@@ -173,22 +141,22 @@
             </div>
             <div class="stats">
               <div class="stat">
-                <div class="stat-label">TOTAL ACCOUNTS <span>♙</span></div>
+                <div class="stat-label">TOTAL ACCOUNTS <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-accounts"></use></svg></div>
                 <div class="stat-value" id="statAccounts">0</div>
                 <div class="stat-caption">Independent sessions</div>
               </div>
               <div class="stat">
-                <div class="stat-label">IMAGES COMPLETE <span>◈</span></div>
+                <div class="stat-label">IMAGES COMPLETE <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-image"></use></svg></div>
                 <div class="stat-value" id="statComplete">0</div>
                 <div class="stat-caption">Stored privately</div>
               </div>
               <div class="stat">
-                <div class="stat-label">ACTIVE JOBS <span>◷</span></div>
+                <div class="stat-label">ACTIVE JOBS <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-clock"></use></svg></div>
                 <div class="stat-value" id="statActive">0</div>
                 <div class="stat-caption">Queued or generating</div>
               </div>
               <div class="stat">
-                <div class="stat-label">ALL-TIME JOBS <span>↗</span></div>
+                <div class="stat-label">ALL-TIME JOBS <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-arrow-up-right"></use></svg></div>
                 <div class="stat-value" id="statJobs">0</div>
                 <div class="stat-caption">Across all accounts</div>
               </div>
@@ -196,7 +164,7 @@
             <div class="section-head">
               <h3>Account health</h3>
               <button class="text-button" data-go="accounts">
-                Manage accounts ↗
+                Manage accounts <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-arrow-up-right"></use></svg>
               </button>
             </div>
             <div id="overviewAccounts" class="account-grid"></div>
@@ -332,7 +300,7 @@
               <div class="ops-main">
                 <article class="panel">
                   <div class="panel-title">
-                    <span class="rounded-icon">◷</span>
+                    <span class="rounded-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-clock"></use></svg></span>
                     <div>
                       <h3>Dispatch control</h3>
                       <small
@@ -547,7 +515,7 @@
                 </p>
               </div>
               <button class="btn primary" id="accountsAdd">
-                ＋ Add account
+                <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-plus"></use></svg> Add account
               </button>
             </div>
             <div class="notice info">
@@ -564,7 +532,7 @@
                 <span class="small-count" id="accountCount">0</span>
               </h3>
               <button class="text-button" id="accountsRefresh">
-                ↻ Refresh
+                <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-refresh"></use></svg> Refresh
               </button>
             </div>
             <div id="accountList" class="account-grid"></div>
@@ -594,7 +562,7 @@
             <div class="studio-grid">
               <div class="panel create-panel">
                 <div class="panel-title">
-                  <span class="rounded-icon">✧</span>
+                  <span class="rounded-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-sparkles"></use></svg></span>
                   <div>
                     <h3>New generation</h3>
                     <small>Powered by a selected account's browser</small>
@@ -674,7 +642,7 @@
                     class="btn primary full"
                     id="generateBtn"
                   >
-                    ✧ Queue images <span>→</span>
+                    <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-sparkles"></use></svg> Queue images <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-arrow-right"></use></svg>
                   </button>
                 </form>
                 <p class="fine-print">
@@ -685,14 +653,14 @@
               </div>
               <div class="panel output-panel">
                 <div class="panel-title">
-                  <span class="rounded-icon">▧</span>
+                  <span class="rounded-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-grid"></use></svg></span>
                   <div>
                     <h3>Latest result</h3>
                     <small>Generation progress and preview</small>
                   </div>
                 </div>
                 <div id="latestPreview" class="preview-empty">
-                  <div class="preview-graphic">✣</div>
+                  <div class="preview-graphic"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-mask"></use></svg></div>
                   <h3>Ready when you are.</h3>
                   <p>
                     Your next image will appear here when the job completes.
@@ -713,7 +681,7 @@
                   Trace each request, account selection and outcome.
                 </p>
               </div>
-              <button class="btn secondary" id="jobsRefresh">↻ Refresh</button>
+              <button class="btn secondary" id="jobsRefresh"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-refresh"></use></svg> Refresh</button>
             </div>
             <div class="panel table-panel">
               <div class="table-wrap">
@@ -747,7 +715,7 @@
                 </p>
               </div>
               <button class="btn secondary" id="galleryRefresh">
-                ↻ Refresh
+                <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-refresh"></use></svg> Refresh
               </button>
             </div>
             <div class="gallery-toolbar">
@@ -829,7 +797,7 @@ GET /v1/jobs/&lt;job UUID&gt;</pre>
             id="cancelModal"
             aria-label="Close"
           >
-            ✕
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-x"></use></svg>
           </button>
         </div>
         <h2 id="accountDialogTitle">Add an account</h2>
@@ -877,7 +845,7 @@ GET /v1/jobs/&lt;job UUID&gt;</pre>
           <button type="button" class="btn secondary" id="cancelModal2">
             Cancel</button
           ><button type="submit" class="btn primary" id="saveAccountBtn">
-            Create account →
+            Create account <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-arrow-right"></use></svg>
           </button>
         </div>
       </form>
@@ -891,7 +859,7 @@ GET /v1/jobs/&lt;job UUID&gt;</pre>
           id="closeLogin"
           aria-label="Close"
         >
-          ✕
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-x"></use></svg>
         </button>
       </div>
       <h2 id="loginTitle">Connect account</h2>
@@ -906,7 +874,7 @@ GET /v1/jobs/&lt;job UUID&gt;</pre>
           Linux server or whenever no browser window is visible.
         </p>
         <button type="button" class="btn primary" id="openRemoteLogin">
-          Open remote login page ↗
+          Open remote login page <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-external"></use></svg>
         </button>
       </section>
       <section class="login-method">
@@ -971,7 +939,7 @@ GET /v1/jobs/&lt;job UUID&gt;</pre>
     <dialog id="logsDialog" class="modal log-modal">
       <div class="modal-top">
         <span class="modal-tag">WORKER LOGS</span
-        ><button class="close-btn" id="closeLogs">✕</button>
+        ><button class="close-btn" id="closeLogs"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-x"></use></svg></button>
       </div>
       <h2 id="logsTitle">Worker logs</h2>
       <pre id="logsContent">Loading…</pre>

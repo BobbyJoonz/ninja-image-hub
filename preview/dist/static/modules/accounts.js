@@ -178,7 +178,7 @@ export function openAdd() {
   $("accPlan").value = "unknown";
   $("accParallel").value = "2";
   $("accountDialogTitle").textContent = "Add an account";
-  $("saveAccountBtn").textContent = "Create account →";
+  $("saveAccountBtn").textContent = "Create account";
   $("addDialog").showModal();
   $("accName").focus();
 }

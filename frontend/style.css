@@ -133,12 +133,6 @@ h3 {
   color: var(--accent);
   border-color: #315338;
 }
-.nav-symbol {
-  width: 22px;
-  text-align: center;
-  font-size: 20px;
-  font-weight: 400;
-}
 .count {
   margin-left: auto;
   border-radius: 7px;
@@ -1204,24 +1198,6 @@ code {
   overflow-wrap: anywhere;
 }
 
-/* v0.4 Operations / Analytics: operational density over decorative KPI cards.
-   All SVG icons are linked unchanged to the Lucide open-source icon library;
-   there are NO manually authored SVG shapes in this project. */
-.nav-image {
-  width: 18px;
-  height: 18px;
-  object-fit: contain;
-  filter: invert(84%) sepia(10%) saturate(390%) hue-rotate(170deg);
-  opacity: 0.84;
-  flex: none;
-}
-.nav-link.active .nav-image {
-  filter: invert(93%) sepia(54%) saturate(909%) hue-rotate(31deg);
-  opacity: 1;
-}
-.nav-link:hover .nav-image {
-  opacity: 1;
-}
 button:focus-visible,
 a:focus-visible,
 input:focus-visible,
@@ -1747,10 +1723,6 @@ textarea:focus-visible {
   }
 }
 @media (max-width: 800px) {
-  .nav-image {
-    width: 23px;
-    height: 23px;
-  }
   .hero-metrics {
     display: none;
   }
@@ -1810,43 +1782,6 @@ textarea:focus-visible {
     animation: none !important;
     transition: none !important;
   }
-}
-
-.nav-image.error {
-  display: none;
-}
-.icon-fallback {
-  display: none;
-  width: 18px;
-  text-align: center;
-  font-size: 17px;
-  flex: none;
-}
-.nav-image.error + .icon-fallback {
-  display: inline-flex;
-}
-.nav-link.active .icon-fallback {
-  color: var(--accent);
-}
-@media (max-width: 800px) {
-  .icon-fallback {
-    width: 23px;
-    font-size: 23px;
-  }
-}
-
-/* Offline-first icon fallback: avoid an empty navigation while a CDN is blocked. */
-.nav-image {
-  display: none;
-}
-.nav-image.loaded {
-  display: block;
-}
-.icon-fallback {
-  display: inline-flex;
-}
-.nav-image.loaded + .icon-fallback {
-  display: none;
 }
 
 .audit-detail {
@@ -2035,4 +1970,96 @@ textarea:focus-visible {
   border-radius: 999px;
   padding: 2px 7px;
   font-weight: 600;
+}
+
+
+/* Icon system: bundled Lucide sprite (ISC), referenced from /static/icons/sprite.svg.
+   Icons inherit currentColor, keep one optical size and are always centred. */
+.icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  display: inline-block;
+  vertical-align: -3px;
+  color: inherit;
+}
+.nav-link .icon {
+  width: 19px;
+  height: 19px;
+  opacity: 0.92;
+}
+.nav-link.active .icon,
+.nav-link:hover .icon {
+  opacity: 1;
+}
+.ninja-mark .icon {
+  width: 19px;
+  height: 19px;
+}
+.preview-graphic .icon {
+  width: 26px;
+  height: 26px;
+}
+.auth-icon .icon {
+  width: 42px;
+  height: 42px;
+}
+.account-icon .icon {
+  width: 19px;
+  height: 19px;
+}
+.rounded-icon .icon {
+  width: 19px;
+  height: 19px;
+}
+.profile .icon {
+  width: 13px;
+  height: 13px;
+  opacity: 0.65;
+}
+.stat-label .icon {
+  width: 16px;
+  height: 16px;
+  color: #648679;
+}
+.small-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.small-action .icon {
+  width: 13px;
+  height: 13px;
+}
+.text-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.text-button .icon {
+  width: 13px;
+  height: 13px;
+}
+.hero-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.hero-tag .icon {
+  width: 12px;
+  height: 12px;
+}
+.btn .icon {
+  width: 15px;
+  height: 15px;
+}
+.close-btn .icon {
+  width: 16px;
+  height: 16px;
+}
+@media (max-width: 800px) {
+  .sidebar .nav-link .icon {
+    width: 21px;
+    height: 21px;
+  }
 }

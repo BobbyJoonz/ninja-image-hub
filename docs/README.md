@@ -38,5 +38,6 @@ Current documentation for Ninja Image Hub. Historical versioned documents were r
 
 | Document | Contents |
 |---|---|
+| [../scripts/build_icons.py](../scripts/build_icons.py) | Regenerates the bundled Lucide icon sprite (ISC); `--check` verifies the UI references |
 | [../AGENTS.md](../AGENTS.md) | Development contract: invariants, dispatch/file/security rules, required checks |
 | [../MANIFEST_SHA256.json](../MANIFEST_SHA256.json) | SHA-256 seal of every tracked file (excludes `.env`, `data/`, `vendor/`) |

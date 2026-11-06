@@ -504,6 +504,46 @@ def test_auto_login_validates_and_clears(loaded):
     assert not path.exists()
 
 
+def test_icons_are_bundled_locally_and_complete():
+    """No CDN, no Unicode glyph fallbacks: one Lucide sprite, every reference resolves."""
+    import re
+
+    sprite = ROOT / "frontend" / "icons" / "sprite.svg"
+    assert sprite.is_file(), "frontend/icons/sprite.svg is missing"
+    assert (ROOT / "frontend" / "icons" / "LICENSE.txt").is_file()
+    ids = set(re.findall(r'id="lc-([a-z0-9-]+)"', sprite.read_text(encoding="utf-8")))
+    assert len(ids) >= 25, f"expected the full icon set, found {len(ids)}"
+
+    sources = [ROOT / "frontend" / "index.html"] + sorted(
+        (ROOT / "frontend").glob("modules/*.js")
+    )
+    text = "\n".join(path.read_text(encoding="utf-8") for path in sources)
+    assert "cdn.jsdelivr" not in text and "lucide-icons/lucide@main" not in text
+    assert "icon-fallback" not in text and "nav-image" not in text
+    used = set(re.findall(r"sprite\.svg#lc-([a-z0-9-]+)", text))
+    occurrences = len(re.findall(r"sprite\.svg#lc-[a-z0-9-]+", text))
+    assert len(used) >= 15, f"expected icons across the UI, found {len(used)}"
+    assert occurrences >= 30, f"expected icons on most controls, found {occurrences}"
+    missing = sorted(used - ids)
+    assert not missing, f"icons referenced but absent from the sprite: {missing}"
+    # Nav must carry real icons, not text glyphs.
+    html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
+    for view in ("overview", "analytics", "operations", "accounts", "studio", "jobs", "gallery", "settings"):
+        assert f'data-view="{view}"' in html
+    assert html.count("sprite.svg#lc-") >= 8
+
+
+def test_icon_sprite_regenerator_reports_success():
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "build_icons.py"), "--check"],
+        capture_output=True,
+        text=True,
+        cwd=str(ROOT),
+    )
+    assert result.returncode == 0, result.stderr
+    assert "sprite OK" in result.stdout
+
+
 def test_worker_command_gives_every_linux_worker_its_own_xvfb():
     """A headed browser on a server needs a virtual display — one per worker, never shared."""
     from hub.workers import display_mode, worker_command

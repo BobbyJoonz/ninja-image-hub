@@ -10,7 +10,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Node.js](https://img.shields.io/badge/node-22%2B-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![SQLite](https://img.shields.io/badge/SQLite-WAL-003B57?logo=sqlite&logoColor=white)](https://www.sqlite.org/wal.html)
-[![Tests](https://img.shields.io/badge/tests-76%20passed%20%C2%B7%201%20skipped-2ea043)](#verification)
+[![Tests](https://img.shields.io/badge/tests-78%20passed%20%C2%B7%201%20skipped-2ea043)](#verification)
 [![Accounts](https://img.shields.io/badge/accounts-1%20to%2016-8957e5)](#multi-account-model)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-linux%20%7C%20windows-6e7681)](#quick-start)
@@ -47,6 +47,8 @@
 One FastAPI process owns a **durable job queue**; each ChatGPT account is a **separate, isolated browser worker** (Node gateway + real headed Chrome, plus its own virtual display on Linux). The dispatcher hands work to accounts under global and per-account caps, with round-robin fairness and per-account cooldowns. Generated images are stored as **original bytes** and served privately: previews, Range downloads, per-job ZIP, and a Bearer agent API for automation.
 
 > **Images only.** There is no video pipeline. The queue/worker layer is provider-agnostic, but the only adapter that ships speaks the OpenAI-compatible image API of the bundled gateway.
+
+**Offline-first interface.** Every icon is a bundled **Lucide** SVG (ISC) served from `/static/icons/sprite.svg` — no CDN, no Unicode fallbacks, one optical size and inherited colour across the navigation, cards, stat tiles and buttons. Regenerate with `python scripts/build_icons.py`.
 
 ### Why this exists
 
@@ -119,7 +121,7 @@ flowchart LR
 | `hub/media.py`, `hub/storage.py`, `hub/delivery.py` | Chunked budgets, atomic publish, previews, ZIP, Range |
 | `hub/security.py`, `hub/limits.py` | Session/CSRF/Bearer, UTF-8-safe comparisons, body caps |
 | `hub/control.py`, `hub/system.py`, `hub/telemetry.py` | Live settings + audit, health, analytics |
-| `frontend/` | Native ES modules: state · api · controller · views · accounts · dom |
+| `frontend/` | Native ES modules: state · api · controller · views · accounts · dom · `icons/sprite.svg` |
 | `deploy/` | Linux installer + systemd unit |
 | `scripts/` | doctor, gateway installer, preview server, bootstrap, audit, benchmark |
 
@@ -343,6 +345,7 @@ All of these are **live** unless marked *restart*. Every change requires admin s
 | `python scripts/bootstrap.py` | — | Create `.env` with unique secrets once; refuses to overwrite an existing one |
 | `python scripts/doctor.py` | `--json` | Pre-flight checklist: Python/Node/Chrome, packages, secrets, JS MIME, data dir, WAL, gateway + browser binaries, RAM budget, ports, Linux display/libraries/fonts. Exit `0` = ready, `1` = at least one FAIL with the fixing command |
 | `python scripts/prepare_gateway.py` | `--yes`, `--skip-browsers` | Complete gateway install: lockfile refusal, pinned revision, `npm ci`, `npx playwright install chromium`, `npx patchright install chrome`. Falls back to a `codeload.github.com` tarball when GitHub is blocked, and tolerates a geo-blocked browser CDN when system Chrome exists |
+| `python scripts/build_icons.py` | `--check` | Regenerates the bundled Lucide icon sprite (`frontend/icons/sprite.svg`, ISC) from a pinned version; `--check` verifies every icon the UI references |
 | `python scripts/serve_preview.py` | `--host`, `--port` | Serves `preview/dist` with correct MIME types (the sample-data preview) |
 | `python scripts/audit_gallery.py` | — | **Read-only** report of missing/unindexed files; never deletes anything |
 | `python scripts/benchmark_transfer.py` | — | Synthetic memory benchmark of the storage stage |
@@ -465,7 +468,7 @@ Guardrails:
 ## Verification
 
 ```bash
-python -m pytest -q                     # 76 passed, 1 skipped  (~96 s)
+python -m pytest -q                     # 78 passed, 1 skipped  (~96 s)
 node --test tests/frontend.test.mjs     # 3 passed
 node --check frontend/app.js            # + all modules + preview/demo.js
 python scripts/doctor.py                # exit 0 = ready

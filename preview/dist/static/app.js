@@ -240,11 +240,6 @@ $("toggleDispatch").addEventListener("click", async () => {
     toast(e.message, true);
   }
 });
-document.querySelectorAll(".nav-image").forEach((img) => {
-  img.addEventListener("load", () => img.classList.add("loaded"));
-  img.addEventListener("error", () => img.classList.add("error"));
-  if (img.complete && img.naturalWidth) img.classList.add("loaded");
-});
 document.addEventListener("session-expired", showAuth);
 $("galleryRefresh").addEventListener("click", () =>
   loadGallery(true).catch((e) => toast(e.message, true)),

@@ -47,3 +47,9 @@ export function uniqueId() {
     hex.slice(20),
   ].join("-");
 }
+
+
+/** Inline reference to the bundled Lucide sprite; colour follows currentColor. */
+export function uiIcon(name, extra = "") {
+  return `<svg class="icon${extra ? " " + extra : ""}" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-${name}"></use></svg>`;
+}
