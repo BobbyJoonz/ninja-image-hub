@@ -2,7 +2,7 @@
 
 تاریخ: ۱۵ آبان ۱۴۰۵ / ۶ نوامبر ۲۰۲۶
 
-v0.6.0 یک انتشار **سخت‌سازی** است، نه افزودن قابلیت تولید تصویر. کد، تست‌ها و اسکریپت‌ها نهایی‌اند؛ این سند فقط تغییرات و شواهد را ثبت می‌کند. این پروژه همچنان ابزار محلی و آزمایشی است و هیچ SLA برای حساب Plus ارائه نمی‌دهد.
+v0.7.0 یک انتشار **سخت‌سازی + بهره‌برداری** است، نه افزودن قابلیت تولید تصویر. کد، تست‌ها و اسکریپت‌ها نهایی‌اند؛ این سند فقط تغییرات و شواهد را ثبت می‌کند. این پروژه همچنان ابزار محلی و آزمایشی است و هیچ SLA برای حساب Plus ارائه نمی‌دهد.
 
 ## چه چیزی در v0.5 شکسته بود
 
@@ -96,3 +96,21 @@ v0.6.0 یک انتشار **سخت‌سازی** است، نه افزودن قاب
 روی این ماشین **Adobe Connect پورت `127.0.0.1:8080` را اشغال می‌کند**؛ اجرای مستندِ قبلی با `--port 8080` خطای «address already in use» می‌دهد. مثال امن `--port 8081` است و `doctor.py` در صورت اشغال بودن پورت، یک پورت آزاد پیشنهاد می‌دهد.
 
 برای گام‌به‌گام نصب [START_HERE_FA.md](START_HERE_FA.md)، برای اولین اجرای عمیق [docs/FIRST_RUN_FA.md](docs/FIRST_RUN_FA.md) و برای بهره‌برداری [docs/OPERATIONS_FA.md](docs/OPERATIONS_FA.md) را ببینید.
+
+
+## فاز ۴ — بهره‌برداری (v0.7.0)
+
+هدف: از «کار می‌کند» به «قابل اتکا و قابل اندازه‌گیری». UI عمداً دست نخورد مگر برای همین قابلیت‌ها.
+
+| قابلیت | پیاده‌سازی | تست |
+|---|---|---|
+| retention + گارد دیسک | tick ساعتی scheduler؛ فقط preview/export/incoming/log؛ dispatch در دیسک کم متوقف می‌شود | ۳ تست: حذف فقط مشتقات، حفاظت لاگ worker زنده، توقف dispatch |
+| آشتی `unknown` | `POST /api/jobs/{id}/resolve` یک‌بارمصرف + audit بدون note + UI دیالوگ | تست: ۴۰۳/۴۲۲/۴۰۹/۲۰۰، health counter، audit |
+| بکاپ/ریستور | `scripts/backup.py` (SQLite backup API + manifest sha256 + verify/restore) | تست round-trip + تشخیص دستکاری |
+| هشدار | `scripts/watch.py` (unreachable/disk/unknown/stall/queue-age + webhook) | تست evaluate برای ۵ شرط |
+| اندازه‌گیری ظرفیت | `scripts/capacity_report.py` (read-only + probe دومرحله‌ای) | تست percentile/summarize |
+| تنظیمات زنده | چهار تنظیم جدید در `control_settings` + Operations + `/api/settings` | تست اعتبارسنجی/ماندگاری |
+
+**اعداد تست:** `pytest` → **۹۸ passed، ۱ skipped**؛ `node --test` → **۶ pass**؛ `doctor.py` و `build_icons.py --check` سبز؛ `preview/dist` byte-identical.
+
+**هنوز تأییدنشده (باید با اکانت واقعی سنجیده شود):** نرخ واقعی ۱۰ اکانت و ۵۰۰ تصویر/۵ ساعت. ابزار اندازه‌گیری آماده است (`scripts/capacity_report.py`)، اما هیچ عدد واقعی provider تا اجرای آن روی سرور در این گزارش ثبت نمی‌شود.

@@ -90,6 +90,12 @@ def create_runtime():
     ctx.idle_stopped: set[str] = set()
     ctx.wake_state: dict[str, float] = {}
 
+    # Operational housekeeping: last run (monotonic), last result and disk headroom.
+    ctx.last_maintenance = 0.0
+    ctx.maintenance_result: dict = {}
+    ctx.disk_free_mb = None
+    ctx.disk_low = False
+
     ctx.processes: dict[str, subprocess.Popen] = {}
 
     ctx.worker_launch_settings: dict[str, tuple[int, int]] = {}

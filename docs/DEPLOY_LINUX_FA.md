@@ -203,3 +203,30 @@ sudo systemctl start ninja-image-hub
 - این یک سرویس SLAدار نیست: Cloudflare، تغییر UI، 2FA و محدودیت‌های حساب همه بیرون از کنترل این نرم‌افزارند.
 - PostgreSQL و چند replica پشتیبانی نمی‌شود؛ یک فرایند، یک دیتابیس.
 - روی سرور مشترک (multi-tenant) این سرویس را اجرا نکن: هر اکانت یک سشن ChatGPT واقعی دارد.
+
+## بکاپ شبانه و watchdog (v0.7)
+
+`deploy/install_linux.sh` حالا این timer ها را هم نصب و فعال می‌کند:
+
+```bash
+sudo systemctl status ninja-backup.timer        # هر شب ۰۳:۱۵ + تاخیر تصادفی
+sudo systemctl list-timers | grep ninja
+sudo journalctl -u ninja-backup.service -n 50   # خروجی create + verify
+```
+
+- `ninja-backup.service` هر شب snapshot می‌گیرد و **بلافاصله verify** می‌کند؛ اگر hash نخواند، service با خطا تمام می‌شود.
+- خروجی پیش‌فرض: `/var/backups/ninja-image-hub/<timestamp>/` — شامل `hub.db`, `gallery/`, سشن‌های `gateway/auth/`, `auto-login.json` و `.env` (0600).
+- این پوشه راز دارد: دسترسی `700`، رمزنگاری در storage خارجی، و در بکاپ عمومی نگذار.
+
+watchdog:
+
+```bash
+sudo install -m 0600 /dev/null /etc/ninja-watch.env
+sudo nano /etc/ninja-watch.env
+# NINJA_WEBHOOK_URL=https://hooks.example/alert
+# NINJA_ADMIN_PASSWORD=...      (برای بررسی سن صف لازم است)
+sudo systemctl enable --now ninja-watch
+sudo journalctl -u ninja-watch -f
+```
+
+هشدارها: unknown حل‌نشده، دیسک کم، صف بدون worker، سن صف و پنل از دسترس خارج.

@@ -611,7 +611,7 @@ h3 {
 }
 .create-panel select,
 .create-panel textarea,
-.modal input:not([type="checkbox"]) {
+.modal input:not([type="checkbox"]):not([type="radio"]) {
   width: 100%;
   border: 1px solid #2b415b;
   background: #0b1929;
@@ -2403,4 +2403,69 @@ body.booting .stat-value {
   .toast {
     max-width: none;
   }
+}
+
+
+/* ---------- Phase 4: reconciliation dialog and resolution badges ---------- */
+.radio-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 14px 0 16px;
+}
+.radio-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px solid #2e4964;
+  background: #0f1e30;
+  border-radius: 10px;
+  padding: 11px 12px;
+  cursor: pointer;
+}
+.radio-row:hover {
+  border-color: #4f7a8c;
+}
+.radio-row input {
+  margin-top: 3px;
+  accent-color: #b9f85c;
+  width: 17px;
+  height: 17px;
+  flex: 0 0 17px;
+  padding: 0;
+}
+.radio-row strong {
+  display: block;
+  color: #dbe9f7;
+  font-size: 12px;
+}
+.radio-row small {
+  display: block;
+  color: #93a9c0;
+  font-size: 11px;
+  margin-top: 3px;
+}
+#resolveDialog textarea {
+  width: 100%;
+  resize: vertical;
+  background: #0f1e30;
+  border: 1px solid #2e4964;
+  border-radius: 9px;
+  color: #e8eefb;
+  padding: 10px 12px;
+  font-size: 12px;
+}
+.pill.resolved {
+  background: #23303f;
+  border-color: #4a6478;
+  color: #b9cadb;
+}
+.job-resolution {
+  display: block;
+  margin-top: 5px;
+  font-size: 11px;
+  color: #9ab1c6;
+}
+.job-resolution strong {
+  color: #cfdded;
 }

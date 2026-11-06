@@ -1,0 +1,19 @@
+[Unit]
+Description=Ninja Image Hub watchdog (health/disk/queue alerts)
+After=network-online.target ninja-image-hub.service
+
+[Service]
+Type=simple
+User=ninja
+Group=ninja
+WorkingDirectory=/opt/ninja-image-hub
+EnvironmentFile=-/opt/ninja-image-hub/.env
+# Optional: put NINJA_WEBHOOK_URL= and NINJA_ADMIN_PASSWORD= in this file (mode 0600)
+EnvironmentFile=-/etc/ninja-watch.env
+ExecStart=/opt/ninja-image-hub/.venv/bin/python scripts/watch.py --panel http://127.0.0.1:8081 --interval 120
+Restart=always
+RestartSec=10
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

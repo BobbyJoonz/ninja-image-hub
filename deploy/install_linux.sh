@@ -88,6 +88,18 @@ systemctl enable --now ninja-image-hub
 sleep 3
 systemctl --no-pager --lines=15 status ninja-image-hub || true
 
+# Optional operational timers: nightly verified backup + alert watchdog.
+if [ -f "$APP_DIR/deploy/ninja-backup.service" ]; then
+  install -m 0644 "$APP_DIR/deploy/ninja-backup.service" "$APP_DIR/deploy/ninja-backup.timer" /etc/systemd/system/
+  install -m 0644 "$APP_DIR/deploy/ninja-watch.service" /etc/systemd/system/
+  mkdir -p /var/backups/ninja-image-hub
+  chown "$APP_USER":"$APP_USER" /var/backups/ninja-image-hub
+  systemctl daemon-reload
+  systemctl enable --now ninja-backup.timer
+  echo "Backup timer enabled (nightly 03:15, snapshot verified after creation)."
+  echo "Watchdog: create /etc/ninja-watch.env (NINJA_WEBHOOK_URL=...) then: systemctl enable --now ninja-watch"
+fi
+
 cat <<EOF
 
 Installed. Next steps (run as $APP_USER, not root):

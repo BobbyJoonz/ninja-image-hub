@@ -395,6 +395,10 @@ def _dispatch_available(ctx):
         free = ctx.setting("global_max_inflight") - len(ctx.active_jobs)
         if ctx.setting("dispatch_paused"):
             return 0
+        if getattr(ctx, "disk_low", False):
+            # Fail safe instead of queueing work that cannot be stored: running jobs finish,
+            # queued jobs stay queued, and /api/health reports disk_low.
+            return 0
         if free <= 0:
             return 0
         by_acc, accs = ctx._candidate_jobs()
@@ -486,6 +490,7 @@ def scheduler_loop(ctx):
             ctx._wake_for_queue()
             ctx._reap_idle_workers()
             ctx._refresh_health()
+            ctx._run_maintenance()
             ctx._dispatch_available()
         except Exception as exc:
             print("[scheduler] dispatch error:", str(exc)[:300], file=sys.stderr)

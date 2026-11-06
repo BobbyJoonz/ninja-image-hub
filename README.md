@@ -10,7 +10,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Node.js](https://img.shields.io/badge/node-22%2B-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![SQLite](https://img.shields.io/badge/SQLite-WAL-003B57?logo=sqlite&logoColor=white)](https://www.sqlite.org/wal.html)
-[![Tests](https://img.shields.io/badge/tests-88%20passed%20%C2%B7%201%20skipped-2ea043)](#verification)
+[![Tests](https://img.shields.io/badge/tests-98%20passed%20%C2%B7%201%20skipped-2ea043)](#verification)
 [![Accounts](https://img.shields.io/badge/accounts-1%20to%2016-8957e5)](#multi-account-model)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-linux%20%7C%20windows-6e7681)](#quick-start)
@@ -49,6 +49,16 @@ One FastAPI process owns a **durable job queue**; each ChatGPT account is a **se
 > **Images only.** There is no video pipeline. The queue/worker layer is provider-agnostic, but the only adapter that ships speaks the OpenAI-compatible image API of the bundled gateway.
 
 **Offline-first interface.** Every icon is a bundled **Lucide** SVG (ISC) served from `/static/icons/sprite.svg` — no CDN, no Unicode fallbacks, one optical size and inherited colour. Jobs are searchable and filterable (status chips), the mobile layout turns tables into cards, account actions collapse into a keyboard-friendly overflow menu, first paint uses skeletons instead of empty boxes, and notifications stack with icons and dismiss buttons. Accessibility: skip link, `aria-current` navigation, labelled icon-only buttons, AA contrast and `prefers-reduced-motion` support. Regenerate icons with `python scripts/build_icons.py`.
+
+**Operational safety.** A background housekeeping tick only ever removes derived data
+(WebP previews, leftover export ZIPs, interrupted `.incoming-*` spools, rotated worker
+logs); originals, sessions and the database are never deleted. Below `min_free_disk_mb`
+the dispatcher stops taking new work instead of failing on a full disk. Unknown upstream
+outcomes can be reconciled once (`POST /api/jobs/{id}/resolve`) — recording what the
+operator verified without ever retrying. `scripts/backup.py` takes a WAL-safe snapshot
+(originals + sessions + `.env`) and re-hashes it; `scripts/watch.py` alerts on unresolved
+jobs, low disk and stalls; `scripts/capacity_report.py` measures real throughput, queue
+wait and generation time instead of estimating it.
 
 ### Why this exists
 
@@ -337,7 +347,7 @@ All of these are **live** unless marked *restart*. Every change requires admin s
 | `COOKIE_SECURE` | optional | `true` when the panel is behind HTTPS |
 | `DATA_DIR` | optional | Data root (default `./data`) |
 | `DATABASE_URL` | optional | SQLite by default; PostgreSQL is *not* validated |
-| `GLOBAL_MAX_INFLIGHT`, `GATEWAY_MAX_TABS`, `MAX_PENDING_JOBS`, `MAX_BATCH_IMAGES`, `PROVIDER_COOLDOWN_MINUTES`, `MAX_RUNNING_ACCOUNTS`, `IDLE_WORKER_SHUTDOWN_MINUTES`, `MIN_FREE_MEMORY_MB` | optional | Seed values for a **fresh** database only; afterwards the DB/panel wins |
+| `GLOBAL_MAX_INFLIGHT`, `GATEWAY_MAX_TABS`, `MAX_PENDING_JOBS`, `MAX_BATCH_IMAGES`, `PROVIDER_COOLDOWN_MINUTES`, `MAX_RUNNING_ACCOUNTS`, `IDLE_WORKER_SHUTDOWN_MINUTES`, `MIN_FREE_MEMORY_MB`, `PREVIEW_RETENTION_DAYS`, `EXPORT_RETENTION_HOURS`, `WORKER_LOG_MAX_MB`, `MIN_FREE_DISK_MB` | optional | Seed values for a **fresh** database only; afterwards the DB/panel wins |
 
 ### C. CLI scripts
 
@@ -346,7 +356,10 @@ All of these are **live** unless marked *restart*. Every change requires admin s
 | `python scripts/bootstrap.py` | — | Create `.env` with unique secrets once; refuses to overwrite an existing one |
 | `python scripts/doctor.py` | `--json` | Pre-flight checklist: Python/Node/Chrome, packages, secrets, JS MIME, data dir, WAL, gateway + browser binaries, RAM budget, ports, Linux display/libraries/fonts. Exit `0` = ready, `1` = at least one FAIL with the fixing command |
 | `python scripts/prepare_gateway.py` | `--yes`, `--skip-browsers` | Complete gateway install: lockfile refusal, pinned revision, `npm ci`, `npx playwright install chromium`, `npx patchright install chrome`. Falls back to a `codeload.github.com` tarball when GitHub is blocked, and tolerates a geo-blocked browser CDN when system Chrome exists |
-| `python scripts/build_icons.py` | `--check` | Regenerates the bundled Lucide icon sprite (`frontend/icons/sprite.svg`, ISC) from a pinned version; `--check` verifies every icon the UI references |
+| `python scripts/build_icons.py` | `--check` | Regenerates the bundled Lucide icon sprite (`frontend/icons/sprite.svg`, ISC) and the favicon from a pinned version; `--check` verifies every icon the UI references |
+| `python scripts/backup.py` | `create`, `verify`, `restore` | WAL-safe SQLite snapshot + originals + per-account sessions + `.env`; `verify` re-hashes every file; `restore` requires an empty target or `--force` |
+| `python scripts/watch.py` | `--once`, `--interval`, `--webhook` | Alerts on unresolved unknown jobs, low disk, queue stalls and an unreachable panel; de-duplicated via a state file; JSON webhook payload |
+| `python scripts/capacity_report.py` | `--submit --yes`, `--accounts` | Read-only capacity snapshot by default; with `--submit` measures real wall time, queue wait, generation p50/p95 and sustained images/hour against a real panel |
 | `python scripts/serve_preview.py` | `--host`, `--port` | Serves `preview/dist` with correct MIME types (the sample-data preview) |
 | `python scripts/audit_gallery.py` | — | **Read-only** report of missing/unindexed files; never deletes anything |
 | `python scripts/benchmark_transfer.py` | — | Synthetic memory benchmark of the storage stage |
@@ -392,6 +405,7 @@ All of these are **live** unless marked *restart*. Every change requires admin s
 | `GET /api/jobs?limit=` | admin | Recent jobs (≤ 200) with image metadata |
 | `GET /api/jobs/{id}` | admin | One job with all outputs |
 | `DELETE /api/jobs/{id}` | CSRF | Cancel queued / delete settled job |
+| `POST /api/jobs/{id}/resolve` | CSRF | `{resolution: "delivered_manually" \| "not_delivered" \| "abandoned", note?}` — one-shot reconciliation of an `unknown` job; never retries upstream |
 | `GET /api/gallery?limit=&cursor=` | admin | Keyset page of individual outputs (≤ 100) |
 | `GET /api/images/{job}/{pos}` | admin | Original bytes; `?download=true` for attachment; supports Range |
 | `GET /api/images/{job}` | admin | First output (legacy-compatible route) |
@@ -469,13 +483,13 @@ Guardrails:
 ## Verification
 
 ```bash
-python -m pytest -q                     # 88 passed, 1 skipped  (~96 s)
-node --test tests/frontend.test.mjs     # 5 passed
+python -m pytest -q                     # 98 passed, 1 skipped  (~96 s)
+node --test tests/frontend.test.mjs     # 6 passed
 node --check frontend/app.js            # + all modules + preview/demo.js
 python scripts/doctor.py                # exit 0 = ready
 ```
 
-Covered by the suite: account lifecycle, CSRF/Bearer auth, legacy SQL migration, fairness and caps, a 500-job queue, multi-image responses, partial/unknown outcomes, cooldown without rotation, byte-identical originals, Range requests, paginated gallery, ZIP export, redirect/symlink/SSRF rejection, size budgets and rollback cleanup, plus hardening regressions (JS MIME, worker env, SQLite WAL, requeue, supervisor, RAM guard, Xvfb command, deploy assets, on-demand wake/reap).
+Covered by the suite: account lifecycle, CSRF/Bearer auth, legacy SQL migration, fairness and caps, a 500-job queue, multi-image responses, partial/unknown outcomes, cooldown without rotation, byte-identical originals, Range requests, paginated gallery, ZIP export, redirect/symlink/SSRF rejection, size budgets and rollback cleanup, plus hardening regressions (JS MIME, worker env, SQLite WAL, requeue, supervisor, RAM guard, Xvfb command, deploy assets, on-demand wake/reap), and Phase 4 operations: unknown reconciliation (one-shot, audit without note, health counter), retention that provably never touches originals/sessions/db, live-worker log protection, disk-low dispatch stop, backup create/verify/restore round-trip, alert evaluation and capacity math.
 
 Live smoke tests on a real account: `n=2` job → `completed` with two distinct originals, gallery and ZIP verified; worker killed mid-flight → automatic recovery; idle worker reaped in 37 s → next job woke it and completed.
 

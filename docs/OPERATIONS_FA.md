@@ -144,3 +144,91 @@ rule اصلی: **مرورگر فقط وقتی کار هست باز می‌مان
 پایش: `GET /api/health` هر ۱۰ ثانیه؛ اگر `idle_workers` بالا رفت طبیعی است (workers روی تقاضا). اگر `queued` رشد کرد و `running_workers` صفر ماند: `doctor.py` و `worker.log` را ببین.
 
 **ویدیو:** این خط لوله فقط تصویر می‌سازد؛ برای ویدیو باید یک adapter ارائه‌دهندهٔ جدید اضافه شود (نقطهٔ تعویض: `hub/gateway.request_generation`).
+
+
+## نگهداری خودکار، گارد دیسک و retention (v0.7)
+
+یک tick ساعتی در scheduler (بعد از refresh سلامت و قبل از dispatch) این کارها را انجام می‌دهد:
+
+| تنظیم | پیش‌فرض | رفتار |
+|---|---|---|
+| `preview_retention_days` | 30 | حذف preview های WebP قدیمی‌تر از N روز؛ `0` = خاموش. **اصنل‌ها هرگز حذف نمی‌شوند** |
+| `export_retention_hours` | 24 | حذف ZIP های موقت قدیمی‌تر از N ساعت؛ `0` = خاموش |
+| `worker_log_max_mb` | 20 | چرخش لاگ worker **متوقف** (به `worker.log.1`)؛ لاگ worker در حال اجرا دست نمی‌خورد. `0` = خاموش |
+| `min_free_disk_mb` | 500 | اگر فضای آزاد کمتر شود، **dispatch جدید متوقف** می‌شود؛ Jobهای در صف می‌مانند و هیچ داده‌ای حذف نمی‌شود. `0` = خاموش |
+
+- فایل‌های `.incoming-*` قدیمی‌تر از ۱ ساعت (spool نیمه‌کاره) پاک می‌شوند.
+- هر حذف/چرخش در audit به‌صورت **فقط شمارش** ثبت می‌شود (بدون مسیر/پرامپت/راز).
+- `GET /api/health` حالا `disk_free_mb`, `disk_low`, `unresolved_unknown` و `rate_limited` را هم می‌دهد.
+- هشدار دیسک کم در Operations (بخش capacity) و در نوار وضعیت Overview هم دیده می‌شود.
+
+## آشتی Jobهای `unknown` (بدون retry)
+
+`unknown` یعنی «نمی‌دانیم upstream انجام شد یا نه». تا v0.7 فقط می‌شد حذف کرد؛ حالا:
+
+```
+POST /api/jobs/{id}/resolve
+X-CSRF-Token: <csrf>
+{"resolution": "delivered_manually", "note": "در تاریخچهٔ چت پیدا شد"}
+```
+
+| resolution | معنا | کار بعدی |
+|---|---|---|
+| `delivered_manually` | تصویر واقعاً ساخته شده | کاری نکن؛ دو بار نساز |
+| `not_delivered` | چیزی ساخته نشده | اگر لازم است، آگاهانه دوباره submit کن |
+| `abandoned` | رها کردن | رکورد برای حسابرسی می‌ماند |
+
+- فقط روی Job با `status="unknown"` مجاز است؛ بقیه `409`.
+- یک‌بارمصرف است؛ دوباره `409`.
+- وضعیت Job عوض نمی‌شود (`unknown` می‌ماند)، فقط `resolution`, `resolved_at`, `resolution_note` ثبت می‌شود.
+- در UI: Jobs → فیلتر Problems → دکمهٔ **Resolve** روی همان ردیف.
+
+## بکاپ و بازیابی
+
+```bash
+python scripts/backup.py create --dest /var/backups/ninja-image-hub   # snapshot + manifest
+python scripts/backup.py verify --path /var/backups/ninja-image-hub/<ts>
+python scripts/backup.py restore --path ... --target /path/to/data --dry-run
+python scripts/backup.py restore --path ... --target /path/to/data    # پنل را قبلش متوقف کن
+```
+
+- دیتابیس با API بکاپ SQLite (سازگار با WAL) snapshot می‌شود؛ کپی خام `hub.db` در حالت WAL کافی **نیست**.
+- شامل: `hub.db`, origginalهای `gallery/`, `accounts/<id>/auto-login.json`, `gateway/auth/` و `.env` (mode 0600).
+- شامل نمی‌شود: previews و exportهای موقت (قابل بازتولید)، مگر `--include-derived`.
+- `verify` همهٔ hash ها را چک می‌کند؛ `restore` روی مقصد غیرخالی فقط با `--force`.
+- بکاپ شامل **سشن ChatGPT و رازهای `.env`** است: رمزنگاری‌شده و خصوصی نگه دار.
+
+Timer های آماده در `deploy/`:
+
+```bash
+sudo cp deploy/ninja-backup.service deploy/ninja-backup.timer /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now ninja-backup.timer
+# watch (اختیاری، webhook):
+sudo cp deploy/ninja-watch.service /etc/systemd/system/
+sudo install -m 0600 /dev/null /etc/ninja-watch.env
+sudo nano /etc/ninja-watch.env   # NINJA_WEBHOOK_URL=... و در صورت نیاز NINJA_ADMIN_PASSWORD=...
+sudo systemctl enable --now ninja-watch
+```
+
+## هشدارها
+
+```bash
+python scripts/watch.py --once --panel http://127.0.0.1:8081   --webhook https://hooks.example/alert --unresolved-min 1   --disk-min-mb 500 --queued-age-min 15
+```
+
+- `--once` برای cron/systemd-timer؛ خروج `1` یعنی هشدار تازه دارد.
+- بدون `NINJA_ADMIN_PASSWORD` فقط health خوانده می‌شود (بدون سن صف).
+- هشدارها با state file تکرار نمی‌شوند (`--repeat-min`).
+- payload: `{"text": "...", "alerts": [...], "health": {...}}` — برای Slack/Telegram یک آداپتور کوچک کافی است.
+
+## اندازه‌گیری ظرفیت واقعی (۱۰ اکانت)
+
+```bash
+python scripts/capacity_report.py --password "$ADMIN_PASSWORD"
+python scripts/capacity_report.py --password "$ADMIN_PASSWORD" --submit --yes --accounts 10
+```
+
+- حالت اول فقط snapshot می‌دهد: workerها، RAM، صف، سقف‌ها، دیسک، unknown حل‌نشده.
+- حالت دوم به تعداد `--accounts` × `--jobs-per-account` Job واقعی می‌فرستد (مصرف سهمیه!) و اندازه می‌گیرد:
+  wall time، تصاویر ذخیره‌شده، پایداری تصویر/ساعت، انتظار صف p50/p95 (از analytics) و تولید p50/p95.
+- **قاعده:** هر عددی که این ابزار می‌دهد فقط برای همان اجرا معتبر است؛ آن را به «۵۰۰ تصویر در ۵ ساعت» تعمیم نده مگر اندازه‌گیری همان بازه همین را نشان دهد.

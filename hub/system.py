@@ -1,6 +1,22 @@
 import os
+import shutil
 
 from sqlalchemy import func, select
+
+
+def _disk_free_mb(ctx):
+    try:
+        return int(shutil.disk_usage(ctx.DATA).free // (1024 * 1024))
+    except OSError:
+        return None
+
+
+def _disk_low(ctx):
+    free = _disk_free_mb(ctx)
+    threshold = int(ctx.setting("min_free_disk_mb") or 0)
+    if free is None or threshold <= 0:
+        return False
+    return free < threshold
 
 
 def settings(ctx):
@@ -29,6 +45,12 @@ def settings(ctx):
             else "always-on (idle browsers stay running)"
         ),
         "dispatch_paused": bool(ctx.setting("dispatch_paused")),
+        "preview_retention_days": ctx.setting("preview_retention_days"),
+        "export_retention_hours": ctx.setting("export_retention_hours"),
+        "worker_log_max_mb": ctx.setting("worker_log_max_mb"),
+        "min_free_disk_mb": ctx.setting("min_free_disk_mb"),
+        "disk_free_mb": _disk_free_mb(ctx),
+        "disk_low": _disk_low(ctx),
         "terms_warning": "Unofficial ChatGPT UI automation may violate OpenAI Terms and cause account suspension.",
         "vendor_url": "https://github.com/stufently/gpt-web-gateway",
         "setup_command": "python scripts/prepare_gateway.py",
@@ -52,9 +74,11 @@ def health(ctx):
         ).scalar_one()
     with ctx.proc_guard:
         alive = sum(1 for worker in ctx.processes.values() if worker.poll() is None)
+    disk_free = _disk_free_mb(ctx)
+    disk_low = _disk_low(ctx)
     return {
         "ok": True,
-        "version": "0.6.4",
+        "version": "0.7.0",
         "gateway_installed": ctx.runtime_installed(),
         "accounts": accounts_total,
         "running_workers": alive,
@@ -63,10 +87,14 @@ def health(ctx):
             "on-demand" if ctx.setting("idle_worker_shutdown_minutes") > 0 else "always-on"
         ),
         "dispatch_paused": bool(ctx.setting("dispatch_paused")),
+        "disk_free_mb": disk_free,
+        "disk_low": disk_low,
+        "unresolved_unknown": ctx.unresolved_unknown(),
         "queued": counts.get("queued", 0),
         "running": counts.get("running", 0),
         "completed": counts.get("completed", 0),
         "partial": counts.get("partial", 0),
         "failed": counts.get("failed", 0),
         "unknown": counts.get("unknown", 0),
+        "rate_limited": counts.get("rate_limited", 0),
     }

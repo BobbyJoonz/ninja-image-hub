@@ -1,0 +1,16 @@
+[Unit]
+Description=Ninja Image Hub nightly backup
+Documentation=file:///opt/ninja-image-hub/docs/OPERATIONS_FA.md
+
+[Service]
+Type=oneshot
+User=ninja
+Group=ninja
+WorkingDirectory=/opt/ninja-image-hub
+EnvironmentFile=/opt/ninja-image-hub/.env
+ExecStart=/opt/ninja-image-hub/.venv/bin/python scripts/backup.py create --dest /var/backups/ninja-image-hub
+# Verify the fresh snapshot immediately; a corrupt backup should fail the unit.
+ExecStartPost=/bin/sh -c 'latest=$(ls -1dt /var/backups/ninja-image-hub/*/ | head -1); /opt/ninja-image-hub/.venv/bin/python scripts/backup.py verify --path "$latest"'
+Nice=10
+IOSchedulingClass=idle
+PrivateTmp=false

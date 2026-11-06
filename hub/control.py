@@ -107,6 +107,13 @@ def initialize_controls(ctx):
         "idle_worker_shutdown_minutes": (20, 0, 1440, "IDLE_WORKER_SHUTDOWN_MINUTES"),
         "target_images": (500, 1, 100000, None),
         "target_window_hours": (5, 1, 24, None),
+        # Operational housekeeping. Retention only ever touches derived/regenerable data
+        # (previews, temp exports, worker logs); originals, sessions and the database are
+        # never deleted by maintenance.
+        "preview_retention_days": (30, 0, 3650, "PREVIEW_RETENTION_DAYS"),
+        "export_retention_hours": (24, 0, 8760, "EXPORT_RETENTION_HOURS"),
+        "worker_log_max_mb": (20, 0, 1024, "WORKER_LOG_MAX_MB"),
+        "min_free_disk_mb": (500, 0, 1048576, "MIN_FREE_DISK_MB"),
     }
 
     ctx.config_guard = threading.RLock()

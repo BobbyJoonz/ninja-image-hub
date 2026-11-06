@@ -186,6 +186,7 @@ def analytics(ctx, hours: int = 5):
     account_summary = {}
     statuses = defaultdict(int)
     durations = []
+    waits = []
     total_images = 0
     expected_images = 0
     for job in recent:
@@ -212,6 +213,18 @@ def analytics(ctx, hours: int = 5):
         if job["status"] in ("failed", "partial", "unknown", "rate_limited"):
             a[job["status"]] += 1
         timestamp = job["finished_at"]
+        # Queue wait = how long the job sat before an account picked it up. This is what
+        # capacity measurements must look at, not just generation time.
+        if job["started_at"]:
+            try:
+                wait = (
+                    datetime.fromisoformat(job["started_at"])
+                    - datetime.fromisoformat(job["created_at"])
+                ).total_seconds()
+                if 0 <= wait <= 86400:
+                    waits.append(wait)
+            except (ValueError, TypeError):
+                pass
         if timestamp:
             try:
                 when = datetime.fromisoformat(timestamp)
@@ -234,11 +247,16 @@ def analytics(ctx, hours: int = 5):
                 except (ValueError, TypeError):
                     pass
     durations.sort()
-    percentile = lambda q: (
-        round(durations[min(len(durations) - 1, int((len(durations) - 1) * q))], 1)
-        if durations
-        else None
-    )
+    waits.sort()
+
+    def percentile_of(values, q):
+        return (
+            round(values[min(len(values) - 1, int((len(values) - 1) * q))], 1)
+            if values
+            else None
+        )
+
+    percentile = lambda q: percentile_of(durations, q)
     age = None
     if oldest:
         try:
@@ -269,6 +287,9 @@ def analytics(ctx, hours: int = 5):
         ),
         "p50_sec": percentile(0.5),
         "p95_sec": percentile(0.95),
+        "queue_wait_p50_sec": percentile_of(waits, 0.5),
+        "queue_wait_p95_sec": percentile_of(waits, 0.95),
+        "unresolved_unknown": ctx.unresolved_unknown(),
         "queued_oldest_age_min": age,
         "series": graph,
         "accounts": sorted(

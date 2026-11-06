@@ -32,6 +32,10 @@ The docs above are the current description. Older versioned documents were remov
 - On-demand workers are the default: `idle_worker_shutdown_minutes` (default 20, 0 = always-on) stops idle browsers; the next queued job or the login page wakes them with exponential backoff (20 s → 300 s). Never reap an account with active or queued jobs.
 - Orphan reclaim must only touch processes that provably belong to that account's workspace, and must kill the whole Node + Chrome tree.
 - Keep the job pool at least as large as the maximum `global_max_inflight` (currently 32), and keep `min_free_memory_mb` enforced before starting a browser.
+- Keep the maintenance tick after `_refresh_health()` and before dispatch: supervise → wake → reap → refresh health → maintenance → dispatch.
+- Maintenance may delete only derived/regenerable files (WebP previews, export ZIPs, `.incoming-*` spools, logs of **stopped** workers). Never originals, `gateway/auth/`, `auto-login.json`, the database or the audit. Audit only counts, never paths.
+- A low disk (`min_free_disk_mb`) must pause **new** dispatch, keep queued jobs, and surface `disk_low`/`disk_free_mb` in `/api/health`; it must never delete data to make room.
+- `POST /api/jobs/{id}/resolve` is the only reconciliation path: allowed only for `status="unknown"`, one-shot (`resolved_at` set), audited without the operator note, and it must never re-submit or rewrite status.
 
 ## File pipeline
 
@@ -66,11 +70,13 @@ The docs above are the current description. Older versioned documents were remov
 - The browser stays **headed** (never set `HEADLESS=true`); each worker gets its own Xvfb via `worker_command()` / `display_mode()`. Never share one display between accounts.
 - Keep `deploy/install_linux.sh` and `deploy/ninja-image-hub.service` in sync (single process, `--workers 1`, loopback bind, SSH tunnel for access).
 - Keep `docs/LOGIN_FA.md` (three login methods, step by step) and `docs/DEPLOY_LINUX_FA.md` accurate; the remote-login flow is **Open ChatGPT → sign in → Save Session**.
+- `deploy/ninja-backup.*` and `deploy/ninja-watch.service` are the operational timers; keep their paths, `.env` usage and the verified-backup `ExecStartPost` in sync with the scripts.
+- `scripts/capacity_report.py` is the only accepted way to claim throughput; never turn its read-only snapshot into a performance claim, and never call mock-gateway tests real provider capacity.
 
 ## Required checks
 
 ```bash
-python -m pytest -q          # 88 passed, 1 skipped (skip = symlink test on unprivileged Windows)
+python -m pytest -q          # 98 passed, 1 skipped (skip = symlink test on unprivileged Windows)
 node --test tests/frontend.test.mjs
 node --check frontend/app.js # plus all frontend modules and preview/demo.js
 python scripts/doctor.py     # exit 0 = ready

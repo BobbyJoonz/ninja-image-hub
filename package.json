@@ -1,1 +1,1 @@
-{"name": "ninja-image-hub-ui", "private": true, "version": "0.6.4", "type": "module", "scripts": {"test": "node --test tests/frontend.test.mjs", "check": "node --check frontend/app.js"}}
+{"name": "ninja-image-hub-ui", "private": true, "version": "0.7.0", "type": "module", "scripts": {"test": "node --test tests/frontend.test.mjs", "check": "node --check frontend/app.js"}}

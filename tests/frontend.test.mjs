@@ -46,6 +46,16 @@ test('chart reports data only when a bucket has images',()=>{
   assert.equal(chartHasData(undefined),false);
 });
 
+test('reconciled unknown jobs leave the problems filter',()=>{
+  const jobs=[
+    {id:'a',prompt:'uncertain one',account_id:'x',status:'unknown',resolution:null},
+    {id:'b',prompt:'uncertain two',account_id:'x',status:'unknown',resolution:'delivered_manually'},
+    {id:'c',prompt:'hard failure',account_id:'x',status:'failed'},
+  ];
+  assert.deepEqual(filterJobs(jobs,'problems','',{}).map(j=>j.id),['a','c']);
+  assert.deepEqual(filterJobs(jobs,'all','',{}).map(j=>j.id),['a','b','c']);
+});
+
 test('submission IDs remain valid UUIDs in the HTTP preview fallback',()=>{
   const descriptor=Object.getOwnPropertyDescriptor(crypto,'randomUUID');
   Object.defineProperty(crypto,'randomUUID',{value:undefined,configurable:true});

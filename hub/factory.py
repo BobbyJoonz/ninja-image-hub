@@ -17,6 +17,7 @@ from . import (
     telemetry,
     accounts,
     login,
+    maintenance,
     storage,
     scheduler,
     jobs,
@@ -115,6 +116,8 @@ def create_app():
         "remote_key",
         "remote_nav",
         "remote_save",
+        "remote_url",
+        "remote_pages",
     ):
         setattr(ctx, name, partial(getattr(login, name), ctx))
     for name in (
@@ -151,10 +154,13 @@ def create_app():
         "job_detail",
         "agent_job",
         "delete_job",
+        "resolve_job",
+        "unresolved_unknown",
     ):
         setattr(ctx, name, partial(getattr(jobs, name), ctx))
     for name in ("settings", "health"):
         setattr(ctx, name, partial(getattr(system, name), ctx))
+    ctx._run_maintenance = partial(maintenance.run_maintenance, ctx)
     ctx.ProviderLimit = scheduler.ProviderLimit
     ctx.LOGIN_ACTIONS = {"screenshot", "click", "type", "key", "navigate", "save"}
 
@@ -169,7 +175,7 @@ def create_app():
 
     app = FastAPI(
         title="Ninja Image Hub",
-        version="0.6.4",
+        version="0.7.0",
         docs_url=None,
         redoc_url=None,
         lifespan=lifespan,
@@ -260,6 +266,14 @@ def create_app():
         "/api/accounts/{account_id}/remote/screenshot",
         dependencies=[Depends(ctx.require_admin)],
     )(ctx.remote_shot)
+    app.get(
+        "/api/accounts/{account_id}/remote/url",
+        dependencies=[Depends(ctx.require_admin)],
+    )(ctx.remote_url)
+    app.get(
+        "/api/accounts/{account_id}/remote/pages",
+        dependencies=[Depends(ctx.require_admin)],
+    )(ctx.remote_pages)
     app.post(
         "/api/accounts/{account_id}/remote/click",
         dependencies=[Depends(ctx.csrf_admin)],
@@ -306,6 +320,10 @@ def create_app():
     )
     app.delete("/api/jobs/{job_id}", dependencies=[Depends(ctx.csrf_admin)])(
         ctx.delete_job
+    )
+    # Operator reconciliation of an unknown outcome. Never retries upstream.
+    app.post("/api/jobs/{job_id}/resolve", dependencies=[Depends(ctx.csrf_admin)])(
+        ctx.resolve_job
     )
     app.get("/api/settings", dependencies=[Depends(ctx.require_admin)])(ctx.settings)
     # Unauthenticated liveness/readiness probe on the loopback interface only. It exposes

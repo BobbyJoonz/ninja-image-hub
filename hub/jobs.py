@@ -5,7 +5,7 @@ from collections import defaultdict
 from fastapi import HTTPException
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
-from .schemas import GenerateBody
+from .schemas import GenerateBody, ResolveBody
 
 
 def queue_image(ctx, body: GenerateBody):
@@ -172,12 +172,60 @@ def serialize_job(ctx, row, agent=False, image_rows=None):
             "image_format",
             "image_bytes",
             "image_sha256",
+            "resolution",
+            "resolved_at",
+            "resolution_note",
         ]
     } | {
         "images": outputs,
         "image_count": len(outputs),
         "image_url": outputs[0]["url"] if outputs else None,
     }
+
+
+def unresolved_unknown(ctx):
+    """Jobs whose upstream outcome is unknown and that nobody has reconciled yet."""
+    with ctx.engine.connect() as conn:
+        return conn.execute(
+            select(func.count())
+            .select_from(ctx.jobs)
+            .where(
+                ctx.jobs.c.status == "unknown",
+                ctx.jobs.c.resolved_at.is_(None),
+            )
+        ).scalar_one()
+
+
+def resolve_job(ctx, job_id: str, body: ResolveBody):
+    """Record the operator's verdict on an unknown job. Never retries upstream."""
+    with ctx.engine.begin() as conn:
+        row = (
+            conn.execute(select(ctx.jobs).where(ctx.jobs.c.id == job_id))
+            .mappings()
+            .first()
+        )
+        if not row:
+            raise HTTPException(404, "Job not found.")
+        if row["status"] != "unknown":
+            raise HTTPException(
+                409,
+                f"Only unknown jobs need reconciliation (this job is {row['status']}).",
+            )
+        if row["resolved_at"]:
+            raise HTTPException(409, "This job is already resolved.")
+        conn.execute(
+            update(ctx.jobs)
+            .where(ctx.jobs.c.id == job_id)
+            .values(
+                resolution=body.resolution,
+                resolved_at=ctx.now(),
+                resolution_note=(body.note or None),
+            )
+        )
+    ctx.record_audit(
+        "job.resolve", {"job_id": job_id, "resolution": body.resolution}
+    )
+    return ctx.job_detail(job_id)
 
 
 def list_jobs(ctx, limit: int = 100):

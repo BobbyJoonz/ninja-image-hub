@@ -39,5 +39,8 @@ Current documentation for Ninja Image Hub. Historical versioned documents were r
 | Document | Contents |
 |---|---|
 | [../scripts/build_icons.py](../scripts/build_icons.py) | Regenerates the bundled Lucide icon sprite (ISC); `--check` verifies the UI references |
+| [../scripts/backup.py](../scripts/backup.py) | WAL-safe snapshot of the database + originals + sessions + `.env`; `verify` re-hashes, `restore` is guarded |
+| [../scripts/watch.py](../scripts/watch.py) | Alert loop for unresolved unknown jobs, low disk, queue stalls and an unreachable panel |
+| [../scripts/capacity_report.py](../scripts/capacity_report.py) | Read-only capacity snapshot; `--submit --yes` measures real throughput, queue wait and generation latency |
 | [../AGENTS.md](../AGENTS.md) | Development contract: invariants, dispatch/file/security rules, required checks |
 | [../MANIFEST_SHA256.json](../MANIFEST_SHA256.json) | SHA-256 seal of every tracked file (excludes `.env`, `data/`, `vendor/`) |
