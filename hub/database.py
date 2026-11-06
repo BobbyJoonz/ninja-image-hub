@@ -117,6 +117,12 @@ def initialize_database(ctx):
         Column("resolution", String(32)),
         Column("resolved_at", String(40)),
         Column("resolution_note", Text),
+        # Reasoning effort requested for this job and what the ChatGPT UI actually applied.
+        Column("thinking_requested", String(16)),
+        Column("thinking_applied", String(16)),
+        Column("thinking_verified", Integer),
+        Column("thinking_fallback", String(32)),
+        Column("thinking_mixed", Integer),
     )
 
     ctx.job_images = Table(
@@ -178,6 +184,11 @@ def initialize_database(ctx):
                 "resolution": "VARCHAR(32)",
                 "resolved_at": "VARCHAR(40)",
                 "resolution_note": "TEXT",
+                "thinking_requested": "VARCHAR(16)",
+                "thinking_applied": "VARCHAR(16)",
+                "thinking_verified": "INTEGER",
+                "thinking_fallback": "VARCHAR(32)",
+                "thinking_mixed": "INTEGER",
             },
         }.items():
             current = {c["name"] for c in inspector.get_columns(table_name)}

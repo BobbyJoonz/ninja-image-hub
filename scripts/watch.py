@@ -78,6 +78,15 @@ def evaluate(health, queue=None, options=None):
                     "text": f"{queued} job(s) queued but no browser worker is running.",
                 }
             )
+    effort_below = int(health.get("effort_below_requested_24h") or 0)
+    effort_min = int(options.get("effort_below_min", 1) or 0)
+    if effort_min and effort_below >= effort_min:
+        alerts.append(
+            {
+                "key": "effort_downgrade",
+                "text": f"{effort_below} image job(s) in 24h ran below the requested thinking effort; check the Jobs badges before trusting output quality.",
+            }
+        )
     age_limit = float(options.get("queued_age_min", 0) or 0)
     if queue and age_limit:
         oldest = queue.get("oldest_queued_age_min")
@@ -147,6 +156,7 @@ def main():
     parser.add_argument("--disk-min-mb", type=int, default=0, help="override; 0 uses the Hub value")
     parser.add_argument("--unresolved-min", type=int, default=1)
     parser.add_argument("--queued-age-min", type=float, default=15)
+    parser.add_argument("--effort-below-min", type=int, default=1)
     parser.add_argument("--password", default=os.getenv("NINJA_ADMIN_PASSWORD", ""))
     args = parser.parse_args()
 
@@ -157,6 +167,7 @@ def main():
         "unresolved_min": args.unresolved_min,
         "queued_age_min": args.queued_age_min,
         "workers_down_min": 2,
+        "effort_below_min": args.effort_below_min,
     }
     client = headers = None
     while True:

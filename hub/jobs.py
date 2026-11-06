@@ -175,6 +175,11 @@ def serialize_job(ctx, row, agent=False, image_rows=None):
             "resolution",
             "resolved_at",
             "resolution_note",
+            "thinking_requested",
+            "thinking_applied",
+            "thinking_verified",
+            "thinking_fallback",
+            "thinking_mixed",
         ]
     } | {
         "images": outputs,

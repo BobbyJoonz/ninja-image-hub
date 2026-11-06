@@ -37,6 +37,21 @@ The docs above are the current description. Older versioned documents were remov
 - A low disk (`min_free_disk_mb`) must pause **new** dispatch, keep queued jobs, and surface `disk_low`/`disk_free_mb` in `/api/health`; it must never delete data to make room.
 - `POST /api/jobs/{id}/resolve` is the only reconciliation path: allowed only for `status="unknown"`, one-shot (`resolved_at` set), audited without the operator note, and it must never re-submit or rewrite status.
 
+## Reasoning effort
+
+- Every image generation must send the configured `thinking_mode` (default `high` → gateway
+  `extended`) in the gateway payload. Never inherit the UI's previous tier and never treat
+  effort as prompt guidance: it is a real ChatGPT web-UI control.
+- Persist the gateway echo per job: `thinking_requested`, `thinking_applied`,
+  `thinking_verified`, `thinking_fallback`, `thinking_mixed`. The applied tier is
+  untrusted input; compare canonical tiers and treat a missing echo as unknown, never as
+  success.
+- A downgrade must be surfaced (job badge, 24h health counters, watchdog alert) and must
+  never be retried, silently hidden, or converted into deleting/refusing a delivered
+  image. `/api/health` exposes counts only.
+- `thinking_effort` is a validated enum setting seeded by `THINKING_EFFORT`; unknown
+  values fall back to the safe default (High), never below it.
+
 ## File pipeline
 
 - Preserve original bytes; previews are derived and separate. Never substitute a preview for an original download.
@@ -76,7 +91,7 @@ The docs above are the current description. Older versioned documents were remov
 ## Required checks
 
 ```bash
-python -m pytest -q          # 104 passed, 1 skipped (skip = symlink test on unprivileged Windows)
+python -m pytest -q          # 110 passed, 1 skipped (skip = symlink test on unprivileged Windows)
 node --test tests/frontend.test.mjs
 node --check frontend/app.js # plus all frontend modules and preview/demo.js
 python scripts/doctor.py     # exit 0 = ready

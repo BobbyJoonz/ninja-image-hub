@@ -264,3 +264,49 @@ python scripts/capacity_report.py --password "$ADMIN_PASSWORD" --submit --yes --
 
 > محدودیت‌ها: این داده از «حساب/ورک‌اسپیس شخصی» می‌آید؛ برای workspaceهای تیمی ساختار متفاوت است. اگر اکانت با ایمیل دیگری Plus داشته باشد، این حساب Free نشان داده می‌شود. برای اطمینان، خروجی پنل را با صفحهٔ **Settings → Subscription** مقایسه کن.
 
+
+## سطح تلاش مدل (Thinking effort) برای تصاویر — v0.8
+
+ChatGPT در UI یک کنترل «Thinking effort» دارد. مقدار پیش‌فرض/قبلیِ آن روی هر چت می‌تواند
+فرق کند؛ ما **برای هر درخواست تصویر** صریحاً همان سطح تنظیم‌شده را می‌فرستیم (پیش‌فرض **High**)
+و از خروجی Gateway می‌خوانیم که UI واقعاً چه چیزی را اعمال کرده است.
+
+| تنظیم | مقدار | معنی در Gateway |
+|---|---|---|
+| `thinking_effort` | `high` (پیش‌فرض) | `extended` → «High» |
+| | `extra_high` | `extra_high` (اگر پلن اجازه دهد) |
+| | `medium` | `standard` |
+| | `instant` | `instant` |
+| | `pro` | `pro` |
+
+هر Job این فیلدها را نگه می‌دارد و در ستون وضعیت Jobs نشان می‌دهد:
+
+| فیلد | معنی |
+|---|---|
+| `thinking_requested` | چیزی که خواستیم (`high`) |
+| `thinking_applied` | چیزی که UI واقعاً اعمال کرد |
+| `thinking_verified` | `1` تأییدشده، `0` تأیید نشد، `null` بدون گزارش (Gateway قدیمی) |
+| `thinking_fallback` | سطح جایگزینی که Gateway اعلام کرده |
+| `thinking_mixed` | در یک batch همهٔ تصاویر روی یک سطح نبودند |
+
+نشانه‌ها در UI: `High ✓` (تأییدشده)، `High → Medium` (افت سطح)، `High · mixed`، `High ?` (نامعلوم).
+
+**سیاست در بدترین حالت‌ها**
+
+- **پلن High را ندارد یا سهمیه Pro تمام شده:** Gateway خودش سطح جایگزین را گزارش می‌کند؛
+  تصویرِ سالم **حفظ می‌شود**، job شکست نمی‌خورد و هیچ retry ای انجام نمی‌شود (چون retry هزینهٔ
+  دوباره و ریسک تصویر تکراری دارد). فقط badge + شمارندهٔ هشدار ثبت می‌شود.
+- **Gateway قدیمی/بدون echo:** `thinking_verified = null` → `High ?` و در ۲۴ ساعت شمرده می‌شود؛
+  هرگز به‌عنوان موفقیت نمایش داده نمی‌شود.
+- **batch با سطوح مختلف:** `thinking_mixed=1` و badge «mixed».
+- **مقدار نامعتبر در `.env`:** به High برمی‌گردد (هرگز به سطح پایین‌تر fallback نمی‌کند).
+
+پایش:
+
+```bash
+curl -s http://127.0.0.1:8081/api/health | python -m json.tool | grep effort
+python scripts/watch.py --once   # هشدار effort_downgrade اگر در ۲۴h افت ثبت شده باشد
+```
+
+اگر می‌خواهی بدون افت کار کنی، فقط اکانتی را وصل کن که High را در همان چت نشان می‌دهد؛ و
+پس از هر تغییر UI توسط OpenAI، یک Job آزمایشی بفرست و `thinking_verified` را ببین.

@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 import httpx
 from sqlalchemy import select, update, func
+from . import effort as effort_tier
 from .gateway import request_generation, ResponseBudgetError
 
 
@@ -36,12 +37,20 @@ def execute_job(ctx, job_id, acc, prompt, aspect, quality_preference, n=1):
             return
         if quality_preference == "best":
             prompt += "\n\nProduction guidance: preserve requested details faithfully; aim for clean edges, intentional composition, readable text when requested, and a polished final result. Do not add unrelated objects."
+        # Reasoning effort is a real ChatGPT web-UI control ("Thinking effort"), not a
+        # prompt hint. We always ask for the configured tier (High by default) and read
+        # back what the UI actually applied; a downgrade is recorded and surfaced but the
+        # delivered image is never discarded or retried.
+        thinking_effort = ctx.setting("thinking_effort")
+        thinking_mode = effort_tier.gateway_mode(thinking_effort)
         payload = {
             "prompt": prompt,
             "aspect_ratio": aspect,
             "n": n,
             "response_format": "url",
         }
+        if thinking_mode:
+            payload["thinking_mode"] = thinking_mode
         try:
             r = request_generation(
                 ctx.upstream(acc) + "/v1/images/generations",
@@ -144,6 +153,18 @@ def execute_job(ctx, job_id, acc, prompt, aspect, quality_preference, n=1):
         stored, save_error = ctx.record_image_batch(
             response_body, job_id, acc["port"], n
         )
+        effort_summary = effort_tier.summarize(
+            response_body.get("applied"), thinking_effort
+        )
+        if effort_summary["degraded"] or effort_summary["verified"] is False:
+            print(
+                f"[effort] account {str(acc['id'])[:8]}: requested "
+                f"{effort_summary['requested']}, applied "
+                f"{effort_summary['applied'] or 'unknown'} "
+                f"(verified={effort_summary['verified']}, mixed={effort_summary['mixed']}); "
+                "image kept, nothing retried",
+                file=sys.stderr,
+            )
         status = (
             "completed"
             if len(stored) == n and (not save_error)
@@ -162,6 +183,15 @@ def execute_job(ctx, job_id, acc, prompt, aspect, quality_preference, n=1):
                         if len(stored) < n
                         else None
                     ),
+                    thinking_requested=effort_summary["requested"],
+                    thinking_applied=effort_summary["applied"],
+                    thinking_verified=(
+                        None
+                        if effort_summary["verified"] is None
+                        else int(effort_summary["verified"])
+                    ),
+                    thinking_fallback=effort_summary["fallback"] or None,
+                    thinking_mixed=1 if effort_summary["mixed"] else 0,
                 )
             )
     except ctx.ProviderLimit as e:

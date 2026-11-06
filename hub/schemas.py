@@ -72,6 +72,9 @@ class ControlUpdate(BaseModel):
     export_retention_hours: int | None = Field(default=None, ge=0, le=8760)
     worker_log_max_mb: int | None = Field(default=None, ge=0, le=1024)
     min_free_disk_mb: int | None = Field(default=None, ge=0, le=1048576)
+    thinking_effort: Literal[
+        "high", "extra_high", "medium", "instant", "pro"
+    ] | None = None
     dispatch_paused: bool | None = None
 
 

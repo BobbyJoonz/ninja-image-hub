@@ -2,8 +2,11 @@ import os
 
 from . import plans
 import shutil
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, select
+
+from . import effort
 
 
 def _disk_free_mb(ctx):
@@ -19,6 +22,30 @@ def _disk_low(ctx):
     if free is None or threshold <= 0:
         return False
     return free < threshold
+
+
+def _effort_counts(ctx, hours=24):
+    """Recent jobs whose applied reasoning tier was not confirmed at the requested level."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+    with ctx.engine.connect() as conn:
+        below = conn.execute(
+            select(func.count())
+            .select_from(ctx.jobs)
+            .where(
+                ctx.jobs.c.thinking_requested.is_not(None),
+                ctx.jobs.c.created_at >= cutoff,
+                ctx.jobs.c.thinking_verified == 0,
+            )
+        ).scalar_one()
+        mixed = conn.execute(
+            select(func.count())
+            .select_from(ctx.jobs)
+            .where(
+                ctx.jobs.c.thinking_mixed == 1,
+                ctx.jobs.c.created_at >= cutoff,
+            )
+        ).scalar_one()
+    return below, mixed
 
 
 def settings(ctx):
@@ -51,6 +78,10 @@ def settings(ctx):
         "export_retention_hours": ctx.setting("export_retention_hours"),
         "worker_log_max_mb": ctx.setting("worker_log_max_mb"),
         "min_free_disk_mb": ctx.setting("min_free_disk_mb"),
+        "thinking_effort": ctx.setting("thinking_effort"),
+        "thinking_effort_label": effort.effort_label(ctx.setting("thinking_effort")),
+        "effort_below_requested_24h": _effort_counts(ctx)[0],
+        "effort_mixed_24h": _effort_counts(ctx)[1],
         "disk_free_mb": _disk_free_mb(ctx),
         "disk_low": _disk_low(ctx),
         "terms_warning": "Unofficial ChatGPT UI automation may violate OpenAI Terms and cause account suspension.",
@@ -83,7 +114,7 @@ def health(ctx):
     disk_low = _disk_low(ctx)
     return {
         "ok": True,
-        "version": "0.7.0",
+        "version": "0.8.0",
         "gateway_installed": ctx.runtime_installed(),
         "accounts": accounts_total,
         "running_workers": alive,
@@ -105,6 +136,8 @@ def health(ctx):
             and summary["days_left"] <= 3
         ),
         "unresolved_unknown": ctx.unresolved_unknown(),
+        "effort_below_requested_24h": _effort_counts(ctx)[0],
+        "effort_mixed_24h": _effort_counts(ctx)[1],
         "queued": counts.get("queued", 0),
         "running": counts.get("running", 0),
         "completed": counts.get("completed", 0),

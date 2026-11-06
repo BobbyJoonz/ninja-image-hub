@@ -114,3 +114,21 @@ v0.7.0 یک انتشار **سخت‌سازی + بهره‌برداری** است�
 **اعداد تست:** `pytest` → **۱۰۴ passed، ۱ skipped**؛ `node --test` → **۶ pass**؛ `doctor.py` و `build_icons.py --check` سبز؛ `preview/dist` byte-identical.
 
 **هنوز تأییدنشده (باید با اکانت واقعی سنجیده شود):** نرخ واقعی ۱۰ اکانت و ۵۰۰ تصویر/۵ ساعت. ابزار اندازه‌گیری آماده است (`scripts/capacity_report.py`)، اما هیچ عدد واقعی provider تا اجرای آن روی سرور در این گزارش ثبت نمی‌شود.
+
+
+## v0.8.0 — سطح تلاش تأییدشده (Thinking effort)
+
+قابلیت: هر درخواست تصویر حالا `thinking_mode` را صریح می‌فرستد (پیش‌فرض `extended` = «High»)
+و نتیجهٔ اعمال‌شده را per-job ثبت می‌کند.
+
+| مورد | پیاده‌سازی | تست |
+|---|---|---|
+| ارسال صریح سطح | payload در `hub/scheduler.py` + ماژول `hub/effort.py` | تست E2E با Gateway ساختگی: هر سه Job مقدار `extended` فرستادند |
+| تأیید/افت | خواندن `applied` از پاسخ Gateway، ذخیرهٔ ۵ فیلد در Job | سه سناریو: تأیید‌شده، افت به Medium، بدون echo |
+| نمایش | badge در Jobs (`High ✓` / `High → Medium` / `mixed` / `?`) | تست UI contract |
+| پایش | `effort_below_requested_24h` در `/api/health` + هشدار `watch.py` | تست هشدار |
+| تنظیم زنده | `thinking_effort` enum در Operations + `THINKING_EFFORT` | تست 422 برای مقدار نامعتبر و ماندگاری |
+
+**اعداد تست:** `pytest` → **۱۱۰ passed، ۱ skipped**؛ `node --test` → **۶ pass**.
+
+**تأیید با اجرای واقعی (۶ نوامبر ۲۰۲۶):** یک Job واقعی روی اکانت متصل ( single small blue dot..., n=1) در **۸۱ ثانیه** completed شد و Gateway گزارش داد 	hinking_requested=high, 	hinking_applied=high, 	hinking_verified=1, بدون fallback؛ badge در Jobs «High ✓» بود و effort_below_requested_24h=0 ماند. Job آزمایشی بعد از ثبت شاهد پاک شد. شرط باقی‌مانده: اگر اکانت/پلن سطح High را از دست بدهد، هشدار ۲۴ ساعته (watch) و badge «High → ...» آن را نشان می‌دهد.

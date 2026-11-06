@@ -5,6 +5,7 @@ import threading
 from datetime import datetime, timezone
 from fastapi import HTTPException
 from sqlalchemy import select, update
+from . import effort
 from .schemas import ControlUpdate
 
 
@@ -52,8 +53,18 @@ def update_control(ctx, body: ControlUpdate):
         raise HTTPException(422, "No settings provided.")
     if any((v is None for v in changed.values())):
         raise HTTPException(422, "Settings cannot be null.")
+    enum_keys = set(ctx.ENUM_CONTROLS)
     with ctx.config_guard:
-        updates = {key: int(value) for key, value in changed.items()}
+        updates = {}
+        for key, value in changed.items():
+            if key in enum_keys:
+                default, allowed, _env = ctx.ENUM_CONTROLS[key]
+                canonical = effort.normalize_effort(value, default)
+                if canonical not in allowed:
+                    raise HTTPException(422, f"{key} must be one of {', '.join(allowed)}.")
+                updates[key] = canonical
+            else:
+                updates[key] = int(value)
         old = {key: ctx.config_cache[key] for key in updates}
         with ctx.engine.begin() as conn:
             for key, value in updates.items():
@@ -116,6 +127,10 @@ def initialize_controls(ctx):
         "min_free_disk_mb": (500, 0, 1048576, "MIN_FREE_DISK_MB"),
     }
 
+    ctx.ENUM_CONTROLS = {
+        "thinking_effort": (effort.DEFAULT_EFFORT, effort.VALID_EFFORTS, "THINKING_EFFORT"),
+    }
+
     ctx.config_guard = threading.RLock()
 
     ctx.config_cache = {}
@@ -139,6 +154,22 @@ def initialize_controls(ctx):
                     ctx.control_settings.insert().values(
                         key=k,
                         value=str(val),
+                        updated_at=datetime.now(timezone.utc).isoformat(),
+                    )
+                )
+        for k, (default, allowed, envname) in ctx.ENUM_CONTROLS.items():
+            raw = present.get(k)
+            if raw is None:
+                seeded = effort.normalize_effort(os.getenv(envname, ""), default)
+                val = seeded if seeded in allowed else default
+            else:
+                val = raw if raw in allowed else default
+            ctx.config_cache[k] = val
+            if k not in present:
+                connection.execute(
+                    ctx.control_settings.insert().values(
+                        key=k,
+                        value=val,
                         updated_at=datetime.now(timezone.utc).isoformat(),
                     )
                 )
