@@ -882,6 +882,92 @@ GET /v1/jobs/&lt;job UUID&gt;</pre>
         </div>
       </form>
     </dialog>
+    <dialog id="loginDialog" class="modal login-modal">
+      <div class="modal-top">
+        <span class="modal-tag">ACCOUNT LOGIN</span
+        ><button
+          type="button"
+          class="close-btn"
+          id="closeLogin"
+          aria-label="Close"
+        >
+          ✕
+        </button>
+      </div>
+      <h2 id="loginTitle">Connect account</h2>
+      <p class="fine-print">
+        Three ways to sign in. Pick whichever is easiest; all of them end in the
+        same saved session on the worker.
+      </p>
+      <section class="login-method">
+        <h3>1 · Remote login page <span class="badge-soft">works everywhere</span></h3>
+        <p>
+          Streams the server-side browser; click and type inside it. Use this on a
+          Linux server or whenever no browser window is visible.
+        </p>
+        <button type="button" class="btn primary" id="openRemoteLogin">
+          Open remote login page ↗
+        </button>
+      </section>
+      <section class="login-method">
+        <h3>2 · Visible browser window <span class="badge-soft">desktop only</span></h3>
+        <p>
+          On Windows/macOS/Linux-desktop the worker Chrome window is already open.
+          Sign in there (Chrome profile stays on this machine), then refresh the
+          account status.
+        </p>
+        <button type="button" class="btn secondary" id="refreshLoginStatus">
+          Refresh status
+        </button>
+      </section>
+      <section class="login-method">
+        <h3>3 · Automatic login <span class="badge-soft">optional</span></h3>
+        <p>
+          Stores credentials for this account only, so the gateway can sign in again
+          when the session expires. Saved under the account data directory with file
+          mode 0600; the panel never shows them again. Use a dedicated account.
+        </p>
+        <form id="autoLoginForm">
+          <label for="autoEmail">ChatGPT email</label
+          ><input
+            id="autoEmail"
+            type="email"
+            autocomplete="username"
+            maxlength="254"
+            required
+          />
+          <label for="autoPassword">Password</label
+          ><input
+            id="autoPassword"
+            type="password"
+            autocomplete="current-password"
+            maxlength="512"
+            required
+          />
+          <label for="autoTotp"
+            >TOTP secret (optional, base32)</label
+          ><input
+            id="autoTotp"
+            autocomplete="off"
+            maxlength="64"
+            placeholder="JBSWY3DPEHPK3PXP"
+          />
+          <p class="fine-print" id="autoLoginState">Not configured.</p>
+          <div class="modal-actions">
+            <button type="button" class="btn secondary" id="clearAutoLogin">
+              Remove credentials
+            </button>
+            <button type="submit" class="btn primary" id="saveAutoLogin">
+              Save credentials
+            </button>
+          </div>
+        </form>
+        <p class="fine-print">
+          Applying a change needs a worker restart: Stop → Start this account. The
+          gateway then signs in by itself on startup and after session expiry.
+        </p>
+      </section>
+    </dialog>
     <dialog id="logsDialog" class="modal log-modal">
       <div class="modal-top">
         <span class="modal-tag">WORKER LOGS</span

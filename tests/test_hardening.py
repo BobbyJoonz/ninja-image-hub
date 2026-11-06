@@ -100,9 +100,10 @@ def test_worker_env_excludes_parent_secrets(monkeypatch):
     monkeypatch.setenv("AGENT_API_KEY", "agent-key-value")
     ctx = SimpleNamespace(
         VENDOR=Path("/vendor/gateway"),
+        DATA=Path("/data"),
         setting=lambda key: {"gateway_max_tabs": 3, "max_batch_images": 4}[key],
     )
-    acc = {"port": 41005, "api_secret": "worker-secret"}
+    acc = {"id": "acc-1", "port": 41005, "api_secret": "worker-secret"}
     env = worker_env(ctx, acc)
     for leaked in ("APP_SECRET", "ADMIN_PASSWORD", "DATABASE_URL", "AGENT_API_KEY"):
         assert leaked not in env, leaked
@@ -420,6 +421,87 @@ def test_job_pool_can_hold_the_maximum_global_cap(loaded):
     _, ctx = loaded
     assert ctx.pool._max_workers >= 32
     assert ctx.health_pool._max_workers >= 10
+
+
+def test_auto_login_roundtrip_never_leaks_the_password(loaded):
+    """Optional per-account credentials for the gateway's own re-login."""
+    from hub.workers import worker_env
+
+    client, ctx = loaded
+    h = auth(client)
+    acc = client.post(
+        "/api/accounts", json={"name": "AutoLogin", "autostart": False}, headers=h
+    ).json()
+    aid = acc["id"]
+    res = client.put(
+        f"/api/accounts/{aid}/auto-login",
+        headers=h,
+        json={
+            "email": "bot@example.com",
+            "password": "correct horse battery",
+            "totp_secret": "JBSW Y3DP EHPK 3PXP",
+        },
+    )
+    assert res.status_code == 200, res.text
+    assert "correct horse" not in res.text
+    status = client.get(f"/api/accounts/{aid}/auto-login")
+    assert status.json() == {
+        "configured": True,
+        "email": "bot@example.com",
+        "has_totp": True,
+    }
+    assert "password" not in status.text
+    assert client.get("/api/accounts").json()[0]["auto_login_configured"] is True
+
+    env = worker_env(ctx, ctx.query_account(aid))
+    assert env["CHATGPT_EMAIL"] == "bot@example.com"
+    assert env["CHATGPT_PASSWORD"] == "correct horse battery"
+    assert env["CHATGPT_TOTP_SECRET"] == "JBSWY3DPEHPK3PXP"
+    # The Hub's own secrets still never reach the worker.
+    assert "APP_SECRET" not in env and "DATABASE_URL" not in env
+
+
+def test_auto_login_validates_and_clears(loaded):
+    import os
+
+    client, ctx = loaded
+    h = auth(client)
+    acc = client.post(
+        "/api/accounts", json={"name": "Validate", "autostart": False}, headers=h
+    ).json()
+    aid = acc["id"]
+    assert client.put(
+        f"/api/accounts/{aid}/auto-login",
+        headers=h,
+        json={"email": "not-an-email", "password": "x"},
+    ).status_code == 422
+    assert client.put(
+        f"/api/accounts/{aid}/auto-login",
+        headers=h,
+        json={"email": "a@b.co", "password": "x", "totp_secret": "!!!"},
+    ).status_code == 422
+    assert client.put(
+        f"/api/accounts/{aid}/auto-login", headers=h, json={"email": "a@b.co", "password": ""}
+    ).status_code == 422
+    # Session + CSRF are required.
+    assert client.put(
+        f"/api/accounts/{aid}/auto-login", json={"email": "a@b.co", "password": "x"}
+    ).status_code == 403
+    assert client.get("/api/accounts/nope/auto-login").status_code == 404
+
+    assert client.put(
+        f"/api/accounts/{aid}/auto-login",
+        headers=h,
+        json={"email": "a@b.co", "password": "secret-value"},
+    ).status_code == 200
+    path = ctx.DATA / "accounts" / aid / "auto-login.json"
+    assert path.is_file()
+    if os.name != "nt":
+        assert (path.stat().st_mode & 0o777) == 0o600
+    cleared = client.delete(f"/api/accounts/{aid}/auto-login", headers=h)
+    assert cleared.status_code == 200
+    assert cleared.json()["configured"] is False
+    assert not path.exists()
 
 
 def test_worker_command_gives_every_linux_worker_its_own_xvfb():

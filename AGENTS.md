@@ -48,6 +48,7 @@ The docs above are the current description. Older versioned documents were remov
 - `GET /api/health` stays unauthenticated and limited to counters/booleans: no paths, prompts, labels, keys or cookies.
 - The worker environment comes from `WORKER_ENV_ALLOWLIST` via `worker_env()` only. Never pass `dict(os.environ)` to the gateway or its browser children.
 - Password and agent-key comparisons use UTF-8 bytes; non-ASCII input must yield 401/403, never HTTP 500.
+- Optional auto-login credentials live per account in `data/accounts/<id>/auto-login.json` (mode 0600), are passed to the worker only as `CHATGPT_EMAIL/PASSWORD/TOTP_SECRET`, are never returned by the API (status exposes `configured`/`has_totp` only) and are audited without secrets. Never log them or move them into the database.
 - Keep SQLite `journal_mode=WAL`, `busy_timeout=15000`, `synchronous=NORMAL` and a 15 s connect timeout.
 - Control mutations persist to `control_settings`, are validated server-side and audited without secrets. `.env` is not a live control plane.
 
@@ -63,12 +64,12 @@ The docs above are the current description. Older versioned documents were remov
 
 - The browser stays **headed** (never set `HEADLESS=true`); each worker gets its own Xvfb via `worker_command()` / `display_mode()`. Never share one display between accounts.
 - Keep `deploy/install_linux.sh` and `deploy/ninja-image-hub.service` in sync (single process, `--workers 1`, loopback bind, SSH tunnel for access).
-- Keep `docs/DEPLOY_LINUX_FA.md` accurate, including the remote-login flow: **Open ChatGPT → sign in → Save Session**.
+- Keep `docs/LOGIN_FA.md` (three login methods, step by step) and `docs/DEPLOY_LINUX_FA.md` accurate; the remote-login flow is **Open ChatGPT → sign in → Save Session**.
 
 ## Required checks
 
 ```bash
-python -m pytest -q          # 74 passed, 1 skipped (skip = symlink test on unprivileged Windows)
+python -m pytest -q          # 76 passed, 1 skipped (skip = symlink test on unprivileged Windows)
 node --test tests/frontend.test.mjs
 node --check frontend/app.js # plus all frontend modules and preview/demo.js
 python scripts/doctor.py     # exit 0 = ready

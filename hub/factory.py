@@ -98,6 +98,9 @@ def create_app():
         "permanently_remove_account",
         "deprecated_delete_account",
         "worker_logs",
+        "auto_login_status",
+        "set_auto_login",
+        "clear_auto_login",
     ):
         setattr(ctx, name, partial(getattr(accounts, name), ctx))
     for name in (
@@ -164,7 +167,7 @@ def create_app():
 
     app = FastAPI(
         title="Ninja Image Hub",
-        version="0.6.0",
+        version="0.6.1",
         docs_url=None,
         redoc_url=None,
         lifespan=lifespan,
@@ -230,6 +233,18 @@ def create_app():
     app.get(
         "/api/accounts/{account_id}/logs", dependencies=[Depends(ctx.require_admin)]
     )(ctx.worker_logs)
+    app.get(
+        "/api/accounts/{account_id}/auto-login",
+        dependencies=[Depends(ctx.require_admin)],
+    )(ctx.auto_login_status)
+    app.put(
+        "/api/accounts/{account_id}/auto-login",
+        dependencies=[Depends(ctx.csrf_admin)],
+    )(ctx.set_auto_login)
+    app.delete(
+        "/api/accounts/{account_id}/auto-login",
+        dependencies=[Depends(ctx.csrf_admin)],
+    )(ctx.clear_auto_login)
     app.get(
         "/accounts/{account_id}/login",
         response_class=HTMLResponse,

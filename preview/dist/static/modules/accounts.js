@@ -2,6 +2,92 @@ import { S } from "./state.js";
 import { $, toast } from "./dom.js";
 import { api } from "./api.js";
 import { refreshData, switchView } from "./controller.js";
+let loginAccountId = null;
+
+function autoLoginStateText(configured) {
+  return configured
+    ? "✓ Credentials are configured for this account (password is never shown)."
+    : "Not configured — remote page or visible window login still works.";
+}
+
+async function loadAutoLoginState(id) {
+  try {
+    const state = await api(`/api/accounts/${id}/auto-login`);
+    $("autoLoginState").textContent = autoLoginStateText(state.configured);
+  } catch (e) {
+    $("autoLoginState").textContent = e.message;
+  }
+}
+
+export function initLoginDialog() {
+  $("closeLogin").addEventListener("click", () => $("loginDialog").close());
+  $("openRemoteLogin").addEventListener("click", () => {
+    if (!loginAccountId) return;
+    window.open(
+      `/accounts/${loginAccountId}/login`,
+      "_blank",
+      "noopener,noreferrer",
+    );
+  });
+  $("refreshLoginStatus").addEventListener("click", async () => {
+    await refreshData(true);
+    toast("Account status refreshed.");
+  });
+  $("autoLoginForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!loginAccountId) return;
+    const button = $("saveAutoLogin");
+    button.disabled = true;
+    try {
+      await api(`/api/accounts/${loginAccountId}/auto-login`, {
+        method: "PUT",
+        body: JSON.stringify({
+          email: $("autoEmail").value.trim(),
+          password: $("autoPassword").value,
+          totp_secret: $("autoTotp").value.trim(),
+        }),
+      });
+      $("autoPassword").value = "";
+      $("autoTotp").value = "";
+      $("autoLoginState").textContent = autoLoginStateText(true);
+      toast("Auto-login saved. Stop → Start the worker to apply it.");
+      await refreshData();
+    } catch (err) {
+      toast(err.message, true);
+    } finally {
+      button.disabled = false;
+    }
+  });
+  $("clearAutoLogin").addEventListener("click", async () => {
+    if (!loginAccountId) return;
+    if (!confirm("Remove the stored auto-login credentials for this account?"))
+      return;
+    try {
+      await api(`/api/accounts/${loginAccountId}/auto-login`, {
+        method: "DELETE",
+      });
+      $("autoLoginState").textContent = autoLoginStateText(false);
+      toast("Auto-login credentials removed.");
+      await refreshData();
+    } catch (err) {
+      toast(err.message, true);
+    }
+  });
+}
+
+export function openLoginDialog(id) {
+  const acc = S.accounts.find((a) => a.id === id);
+  if (!acc) return;
+  loginAccountId = id;
+  $("loginTitle").textContent = `Connect: ${acc.name}`;
+  $("autoLoginForm").reset();
+  $("autoLoginState").textContent = autoLoginStateText(
+    Boolean(acc.auto_login_configured),
+  );
+  $("loginDialog").showModal();
+  loadAutoLoginState(id);
+}
+
 export async function onAccountAction(action, id) {
   try {
     if (action === "add") {
@@ -13,7 +99,7 @@ export async function onAccountAction(action, id) {
       return;
     }
     if (action === "login") {
-      window.open(`/accounts/${id}/login`, "_blank", "noopener,noreferrer");
+      openLoginDialog(id);
       return;
     }
     if (action === "pause-dispatch" || action === "resume-dispatch") {

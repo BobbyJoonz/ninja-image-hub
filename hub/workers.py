@@ -13,7 +13,7 @@ import psutil
 
 
 def safe_account(ctx, acc):
-    return {
+    account = {
         k: acc[k]
         for k in [
             "id",
@@ -29,6 +29,10 @@ def safe_account(ctx, acc):
             "dispatch_enabled",
         ]
     } | ctx.account_status(acc)
+    account["auto_login_configured"] = (
+        ctx.DATA / "accounts" / acc["id"] / "auto-login.json"
+    ).is_file()
+    return account
 
 
 def worker_rss_mb(ctx, account_id):
@@ -232,14 +236,32 @@ WORKER_ENV_ALLOWLIST = frozenset(
 )
 
 
+def _read_auto_login(ctx, account_id):
+    """Per-account credentials for the gateway's own re-login, if the operator stored them."""
+    import json
+
+    path = ctx.DATA / "accounts" / account_id / "auto-login.json"
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict) or not data.get("email") or not data.get("password"):
+        return None
+    return data
+
+
 def worker_env(ctx, acc):
     """Environment for the third-party gateway process.
 
     Only an explicit allowlist of OS variables is inherited: APP_SECRET, ADMIN_PASSWORD,
     AGENT_API_KEY, DATABASE_URL and every other Hub secret must never reach a process we
-    did not write, nor its browser children.
+    did not write, nor its browser children. The only credentials passed are the account's
+    own optional auto-login values, which live in the data directory.
     """
     env = {key: value for key, value in os.environ.items() if key in WORKER_ENV_ALLOWLIST}
+    auto = _read_auto_login(ctx, acc["id"])
     env.update(
         {
             "PORT": str(acc["port"]),
@@ -251,9 +273,9 @@ def worker_env(ctx, acc):
             "MAX_BATCH_N": str(ctx.setting("max_batch_images")),
             "MIN_TURN_STAGGER_SEC": "10",
             "MIN_JOB_GAP_SEC": "60",
-            "CHATGPT_EMAIL": "",
-            "CHATGPT_PASSWORD": "",
-            "CHATGPT_TOTP_SECRET": "",
+            "CHATGPT_EMAIL": (auto or {}).get("email", ""),
+            "CHATGPT_PASSWORD": (auto or {}).get("password", ""),
+            "CHATGPT_TOTP_SECRET": (auto or {}).get("totp_secret", ""),
             "DEBUG_SNAPSHOTS": "0",
             "STALL_SNAPSHOTS": "0",
         }

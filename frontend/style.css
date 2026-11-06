@@ -2000,3 +2000,39 @@ textarea:focus-visible {
   letter-spacing: -2px;
   color: #e9f6d9;
 }
+
+/* Login dialog — three sign-in methods */
+.login-modal {
+  max-width: 720px;
+}
+.login-method {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin: 12px 0;
+  background: rgba(255, 255, 255, 0.02);
+}
+.login-method h3 {
+  margin: 0 0 6px;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.login-method p {
+  margin: 0 0 10px;
+  color: #9caccc;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.badge-soft {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent2);
+  border: 1px solid rgba(114, 235, 199, 0.35);
+  border-radius: 999px;
+  padding: 2px 7px;
+  font-weight: 600;
+}

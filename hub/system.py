@@ -52,7 +52,7 @@ def health(ctx):
         alive = sum(1 for worker in ctx.processes.values() if worker.poll() is None)
     return {
         "ok": True,
-        "version": "0.6.0",
+        "version": "0.6.1",
         "gateway_installed": ctx.runtime_installed(),
         "accounts": accounts_total,
         "running_workers": alive,

@@ -9,6 +9,7 @@ Current documentation for Ninja Image Hub. Historical versioned documents were r
 | [../README.md](../README.md) | Project overview, screenshots, multi-account model, full option and API reference |
 | [../START_HERE_FA.md](../START_HERE_FA.md) | Persian quickstart: install order, doctor, gateway, first account, first image, troubleshooting table |
 | [FIRST_RUN_FA.md](FIRST_RUN_FA.md) | Deep first-run: doctor checks, gateway + browser install, manual ChatGPT login, first image, backup |
+| [LOGIN_FA.md](LOGIN_FA.md) | **Signing in to ChatGPT — three methods** (remote page, visible window, automatic login) with screenshots and troubleshooting |
 
 ## Operating the system
 

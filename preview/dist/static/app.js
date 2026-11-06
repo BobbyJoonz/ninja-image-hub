@@ -10,7 +10,9 @@ import {
   loadGallery,
 } from "./modules/controller.js";
 import { renderAnalytics } from "./modules/views.js";
-import { onAccountAction, openAdd } from "./modules/accounts.js";
+import { onAccountAction, openAdd, initLoginDialog } from "./modules/accounts.js";
+
+initLoginDialog();
 
 $("loginForm").addEventListener("submit", async (e) => {
   e.preventDefault();

@@ -10,7 +10,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Node.js](https://img.shields.io/badge/node-22%2B-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![SQLite](https://img.shields.io/badge/SQLite-WAL-003B57?logo=sqlite&logoColor=white)](https://www.sqlite.org/wal.html)
-[![Tests](https://img.shields.io/badge/tests-74%20passed%20%C2%B7%201%20skipped-2ea043)](#verification)
+[![Tests](https://img.shields.io/badge/tests-76%20passed%20%C2%B7%201%20skipped-2ea043)](#verification)
 [![Accounts](https://img.shields.io/badge/accounts-1%20to%2016-8957e5)](#multi-account-model)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-linux%20%7C%20windows-6e7681)](#quick-start)
@@ -465,7 +465,7 @@ Guardrails:
 ## Verification
 
 ```bash
-python -m pytest -q                     # 74 passed, 1 skipped  (~96 s)
+python -m pytest -q                     # 76 passed, 1 skipped  (~96 s)
 node --test tests/frontend.test.mjs     # 3 passed
 node --check frontend/app.js            # + all modules + preview/demo.js
 python scripts/doctor.py                # exit 0 = ready
@@ -478,6 +478,12 @@ Live smoke tests on a real account: `n=2` job → `completed` with two distinct 
 Tests use **mock gateways and synthetic images** — they are not a claim of verified ChatGPT Plus behaviour.
 
 ---
+
+### Signing in to ChatGPT
+
+Open **Accounts → ↗ Login** and pick one of three methods: the **remote login page** (works on a headless Linux server), the **visible Chrome window** (easiest on a desktop), or **automatic login** with stored per-account credentials (best for long runs and 10-account fleets). Step-by-step guide with screenshots and troubleshooting: [docs/LOGIN_FA.md](docs/LOGIN_FA.md).
+
+Credentials from the iframe form are stored only in `data/accounts/<id>/auto-login.json` (mode 0600), are never returned by the API, and are audited without secrets.
 
 ## Documentation
 

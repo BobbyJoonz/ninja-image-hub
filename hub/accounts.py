@@ -1,3 +1,5 @@
+import json
+import os
 import re
 import secrets
 import shutil
@@ -5,7 +7,99 @@ import threading
 import uuid
 from fastapi import HTTPException
 from sqlalchemy import func, select, update
-from .schemas import AccountBody, AccountUpdate, ConfirmRemove
+from .schemas import AccountBody, AccountUpdate, AutoLoginBody, ConfirmRemove
+
+
+AUTO_LOGIN_FILENAME = "auto-login.json"
+
+
+def _auto_login_path(ctx, account_id):
+    return ctx.DATA / "accounts" / account_id / AUTO_LOGIN_FILENAME
+
+
+def read_auto_login(ctx, account_id):
+    """Stored auto-login credentials for a worker, or None. Never log the result."""
+    path = _auto_login_path(ctx, account_id)
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict) or not data.get("email") or not data.get("password"):
+        return None
+    return data
+
+
+def auto_login_status(ctx, account_id):
+    if not ctx.query_account(account_id):
+        raise HTTPException(404, "Account not found.")
+    data = read_auto_login(ctx, account_id)
+    if not data:
+        return {"configured": False, "email": None, "has_totp": False}
+    return {
+        "configured": True,
+        "email": data.get("email"),
+        "has_totp": bool(data.get("totp_secret")),
+    }
+
+
+def set_auto_login(ctx, account_id, body: AutoLoginBody):
+    """Store optional auto-login credentials for a worker (0600 file, never returned).
+
+    The gateway signs in by itself when the session expires, so a server can survive
+    multi-day operation without a human opening the remote login page. Credentials are
+    kept per account in the data directory, not in the database, and are never logged.
+    """
+    acc = ctx.query_account(account_id)
+    if not acc:
+        raise HTTPException(404, "Account not found.")
+    if acc["archived_at"]:
+        raise HTTPException(409, "Restore the account before editing it.")
+    email = body.email.strip()
+    if "@" not in email or "\n" in email or "\r" in email:
+        raise HTTPException(422, "A valid email address is required.")
+    password = body.password
+    if not password or "\n" in password or "\r" in password:
+        raise HTTPException(422, "A single-line password is required.")
+    totp = re.sub(r"\s+", "", body.totp_secret or "").upper()
+    if totp and not re.fullmatch(r"[A-Z2-7]{16,64}", totp):
+        raise HTTPException(
+            422, "Invalid TOTP secret (base32, 16-64 characters, optional spaces)."
+        )
+    folder = ctx.DATA / "accounts" / account_id
+    folder.mkdir(parents=True, exist_ok=True)
+    path = _auto_login_path(ctx, account_id)
+    temporary = folder / (AUTO_LOGIN_FILENAME + ".tmp")
+    payload = {
+        "email": email,
+        "password": password,
+        "totp_secret": totp,
+        "updated_at": ctx.now(),
+    }
+    temporary.write_text(json.dumps(payload), encoding="utf-8")
+    try:
+        os.chmod(temporary, 0o600)
+    except OSError:
+        pass
+    os.replace(temporary, path)
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
+    ctx.record_audit(
+        "account.auto_login", {"account_id": account_id, "has_totp": bool(totp)}
+    )
+    return {"ok": True, "configured": True, "email": email, "has_totp": bool(totp)}
+
+
+def clear_auto_login(ctx, account_id):
+    if not ctx.query_account(account_id):
+        raise HTTPException(404, "Account not found.")
+    _auto_login_path(ctx, account_id).unlink(missing_ok=True)
+    ctx.record_audit("account.auto_login_cleared", {"account_id": account_id})
+    return {"ok": True, "configured": False, "email": None, "has_totp": False}
+
 
 
 def overview(ctx):

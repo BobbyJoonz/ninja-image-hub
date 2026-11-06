@@ -25,6 +25,12 @@ class ConfirmRemove(BaseModel):
     confirmation: str
 
 
+class AutoLoginBody(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+    password: str = Field(min_length=1, max_length=512)
+    totp_secret: str = Field(default="", max_length=64)
+
+
 class GenerateBody(BaseModel):
     account_id: str
     prompt: str = Field(min_length=3, max_length=4000)
