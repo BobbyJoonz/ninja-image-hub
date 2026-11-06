@@ -115,6 +115,7 @@ def create_app():
         "live_page",
         "live_stream",
         "live_input",
+        "live_cursor",
         "upstream_login_call",
         "remote_init",
         "remote_shot",
@@ -289,6 +290,10 @@ def create_app():
         "/api/accounts/{account_id}/remote/input",
         dependencies=[Depends(ctx.csrf_admin)],
     )(ctx.live_input)
+    app.get(
+        "/api/accounts/{account_id}/remote/cursor",
+        dependencies=[Depends(ctx.require_admin)],
+    )(ctx.live_cursor)
     app.get(
         "/api/accounts/{account_id}/remote/url",
         dependencies=[Depends(ctx.require_admin)],

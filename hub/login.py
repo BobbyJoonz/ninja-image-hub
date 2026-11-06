@@ -324,7 +324,10 @@ async def live_stream(ctx, account_id: str, request: Request):
         raise HTTPException(404, "Account not found.")
     ctx.touch_account(account_id)
     mode = "screencast" if request.query_params.get("mode") == "screencast" else "poll"
-    url = ctx.upstream(acc) + "/login/live?mode=" + mode
+    quality = request.query_params.get("q") or "fast"
+    if quality not in ("fast", "balanced", "sharp"):
+        quality = "fast"
+    url = ctx.upstream(acc) + "/login/live?mode=" + mode + "&q=" + quality
     client = httpx.AsyncClient(trust_env=False, timeout=httpx.Timeout(30.0, read=None))
     try:
         request = client.build_request(
@@ -398,3 +401,23 @@ async def live_input(ctx, account_id: str, body: LiveInput):
     await ctx.upstream_login_call(account_id, "input", {"events": events})
     return {"ok": True, "applied": len(events)}
 
+async def live_cursor(ctx, account_id: str, x: int = 0, y: int = 0):
+    """Ask the worker page what cursor/affordance it would show at this point."""
+    acc = ctx.query_account(account_id)
+    if not acc:
+        raise HTTPException(404, "Account not found.")
+    ctx.touch_account(account_id)
+    url = ctx.upstream(acc) + f"/login/cursor?x={int(x)}&y={int(y)}"
+    try:
+        async with httpx.AsyncClient(trust_env=False, timeout=8.0) as client:
+            response = await client.get(
+                url, headers={"Authorization": f"Bearer {acc['api_secret']}"}
+            )
+    except httpx.RequestError:
+        raise HTTPException(503, "Gateway not ready.")
+    if response.status_code != 200:
+        raise HTTPException(response.status_code, "Cursor probe failed.")
+    try:
+        return response.json()
+    except ValueError:
+        raise HTTPException(502, "Invalid cursor payload.")

@@ -20,10 +20,12 @@ PAGE = r"""<!doctype html>
   button{border:1px solid #3b506f;background:#172940;color:#fff;border-radius:9px;padding:8px 12px;cursor:pointer;font:inherit}
   button.primary{background:var(--accent);color:#0a1220;border-color:var(--accent);font-weight:600}
   .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
-  .stage{position:relative;display:inline-block;max-width:100%;line-height:0}
-  #stream{display:block;width:100%;max-width:1280px;border:1px solid var(--line);border-radius:12px;background:#0b1627;cursor:none;min-height:200px;touch-action:none;user-select:none}
-  #cursor{position:absolute;width:22px;height:22px;pointer-events:none;transform:translate(-2px,-2px);transition:opacity .15s}
-  #cursor svg{display:block;filter:drop-shadow(0 1px 2px rgba(0,0,0,.6))}
+  .stage{position:relative;display:block;max-width:1280px;line-height:0}
+  #stream{display:block;width:100%;height:auto;max-width:1280px;border:1px solid var(--line);border-radius:12px;background:#0b1627;cursor:default;min-height:200px;touch-action:none;user-select:none}
+  #ripple{position:absolute;width:26px;height:26px;margin:-13px 0 0 -13px;border:2px solid var(--accent);border-radius:50%;pointer-events:none;opacity:0;transform:scale(.4)}
+  #ripple.go{animation:ripple .45s ease-out}
+  @keyframes ripple{0%{opacity:.95;transform:scale(.4)}100%{opacity:0;transform:scale(2.2)}}
+  #stream{will-change:transform}
   .status{color:var(--muted);font-size:13px;margin:8px 0}
   .status b{color:var(--txt)}
   .hint{color:var(--muted);font-size:12px;line-height:1.5}
@@ -43,7 +45,8 @@ PAGE = r"""<!doctype html>
   <div class="toolbar">
     <button class="primary" id="openChatgpt">Open ChatGPT</button>
     <button id="saveSession">Save Session</button>
-    <button id="modeBtn">Mode: poll</button>
+    <button id="modeBtn">Mode: screencast</button>
+    <button id="qualityBtn">Quality: fast</button>
     <button id="classicView">Classic view</button>
     <button id="closeView">Close</button>
   </div>
@@ -54,9 +57,7 @@ PAGE = r"""<!doctype html>
   <div class="status" id="status">Starting the live stream…</div>
   <div class="stage" id="stage">
     <canvas id="stream" width="1280" height="800" tabindex="0" aria-label="Live browser view"></canvas>
-    <div id="cursor" style="left:0;top:0;opacity:0">
-      <svg viewBox="0 0 24 24" width="22" height="22"><path d="M4 2 L4 20 L9 15 L12 22 L15 20.5 L12 14 L19 14 Z" fill="#b9f85c" stroke="#0a1220" stroke-width="1.2"/></svg>
-    </div>
+    <div id="ripple"></div>
   </div>
   <p class="hint">The pointer is real: moves, clicks, drag, wheel and typing are forwarded to the worker browser. FPS/latency are measured from decoded frames. If the stream stalls, press Open ChatGPT or switch mode.</p>
 </main>
@@ -64,7 +65,11 @@ PAGE = r"""<!doctype html>
 const ACCOUNT = __ACCOUNT__;
 const CSRF = __CSRF__;
 const CLASSIC_URL = __CLASSIC__;
-let mode = 'poll';
+let mode = localStorage.getItem('ninja-live-mode') || 'screencast';
+let quality = localStorage.getItem('ninja-live-quality') || 'fast';
+document.getElementById('qualityBtn').textContent = 'Quality: ' + quality;
+const ripple = document.getElementById('ripple');
+let pendingSyncAt = null;
 let abort = null;
 let lastFrameAt = null;
 let frameTimes = [];
@@ -76,7 +81,6 @@ let movePending = null;
 function url(path) { return '/api/accounts/' + ACCOUNT + '/remote' + path; }
 const canvas = document.getElementById('stream');
 const ctx = canvas.getContext('2d', { alpha: false });
-const cursor = document.getElementById('cursor');
 const statusBox = document.getElementById('status');
 const fpsBadge = document.getElementById('fps');
 const latencyBadge = document.getElementById('latency');
@@ -110,7 +114,7 @@ async function startStream() {
   abort = new AbortController();
   setStatus('Connecting to live stream…');
   try {
-    const res = await fetch(url('/live') + '?mode=' + mode + '&ts=' + Date.now(), {
+    const res = await fetch(url('/live') + '?mode=' + mode + '&q=' + quality + '&ts=' + Date.now(), {
       cache: 'no-store',
       signal: abort.signal,
     });
@@ -198,6 +202,11 @@ async function drawFrame(bytes) {
     ctx.drawImage(bitmap, 0, 0);
     bitmap.close && bitmap.close();
     const now = performance.now();
+    if (pendingSyncAt != null) {
+      const sync = Math.round(now - pendingSyncAt);
+      latencyBadge.textContent = 'sync ' + sync + ' ms';
+      pendingSyncAt = null;
+    }
     frameTimes.push(now);
     while (frameTimes.length && now - frameTimes[0] > 2000) frameTimes.shift();
     lastFrameAt = now;
@@ -215,10 +224,33 @@ function point(event) {
 }
 
 function moveCursor(event) {
+  // Native cursor shape is driven by the remote page (no local pointer overlay).
+}
+
+let cursorProbeAt = 0;
+async function probeCursor(event) {
+  const now = performance.now();
+  if (now - cursorProbeAt < 120) return;
+  cursorProbeAt = now;
+  const p = point(event);
+  if (!p) return;
+  try {
+    const info = await getJson('/cursor?x=' + p.x + '&y=' + p.y);
+    const shape = info.cursor && info.cursor !== 'auto' ? info.cursor : 'default';
+    canvas.style.cursor = shape;
+    if (info.editable) canvas.style.cursor = 'text';
+  } catch (err) {
+    canvas.style.cursor = 'default';
+  }
+}
+
+function showRipple(event) {
   const rect = canvas.getBoundingClientRect();
-  cursor.style.opacity = '1';
-  cursor.style.left = (event.clientX - rect.left) + 'px';
-  cursor.style.top = (event.clientY - rect.top) + 'px';
+  ripple.style.left = (event.clientX - rect.left) + 'px';
+  ripple.style.top = (event.clientY - rect.top) + 'px';
+  ripple.classList.remove('go');
+  void ripple.offsetWidth;
+  ripple.classList.add('go');
 }
 
 function enqueue(event) {
@@ -230,6 +262,7 @@ function enqueue(event) {
 async function flush() {
   if (sending || !queue.length) return;
   sending = true;
+  pendingSyncAt = performance.now();
   const batch = queue.splice(0, 120);
   try {
     await postJson('/input', { events: batch });
@@ -250,6 +283,7 @@ async function flush() {
 
 canvas.addEventListener('pointermove', (event) => {
   moveCursor(event);
+  probeCursor(event);
   const p = point(event);
   if (!p) return;
   if (movePending) return;
@@ -260,6 +294,7 @@ canvas.addEventListener('pointermove', (event) => {
 canvas.addEventListener('pointerdown', (event) => {
   event.preventDefault();
   canvas.focus();
+  showRipple(event);
   moveCursor(event);
   const p = point(event);
   if (!p) return;
@@ -339,9 +374,19 @@ document.getElementById('saveSession').addEventListener('click', async () => {
   } catch (err) { setStatus(err.message, 'bad'); }
 });
 
+document.getElementById('qualityBtn').addEventListener('click', () => {
+  quality = quality === 'fast' ? 'balanced' : quality === 'balanced' ? 'sharp' : 'fast';
+  localStorage.setItem('ninja-live-quality', quality);
+  document.getElementById('qualityBtn').textContent = 'Quality: ' + quality;
+  startStream();
+});
+
+document.getElementById('modeBtn').textContent = 'Mode: ' + mode;
+
 document.getElementById('modeBtn').addEventListener('click', () => {
   mode = mode === 'poll' ? 'screencast' : 'poll';
   document.getElementById('modeBtn').textContent = 'Mode: ' + mode;
+  localStorage.setItem('ninja-live-mode', mode);
   fpsBadge.textContent = 'mode: ' + mode;
   startStream();
 });

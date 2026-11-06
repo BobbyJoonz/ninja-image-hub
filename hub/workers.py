@@ -544,11 +544,16 @@ module.exports = router;"""
 
 LIVE_VIEW_MARKER = "ninja:live-view"
 
-LIVE_VIEW_JS = r"""// ninja:live-view — real-time frames + trusted input.
-// GET  /login/live?mode=poll|screencast -> multipart MJPEG
-//   poll       (default): captureScreenshot loop, steady fps, works everywhere
-//   screencast: CDP Page.startScreencast, paints only when the page changes
+LIVE_VIEW_JS = r"""// ninja:live-view — real-time frames, trusted input, hover cursor + click feedback.
+// GET  /login/live?mode=poll|screencast&q=fast|balanced|sharp -> multipart MJPEG
+// GET  /login/cursor?x=&y= -> what the remote page would do with the pointer there
 // POST /login/input -> batched mouse/key/text events via CDP Input domain
+const LIVE_PRESETS = {
+  fast: { quality: 30, maxWidth: 720, maxHeight: 450, interval: 45, scale: 0.55 },
+  balanced: { quality: 38, maxWidth: 860, maxHeight: 560, interval: 55, scale: 0.7 },
+  sharp: { quality: 52, maxWidth: 1280, maxHeight: 800, interval: 80, scale: 1 },
+};
+
 router.get('/login/live', async (req, res) => {
   let client = null;
   let timer = null;
@@ -557,6 +562,7 @@ router.get('/login/live', async (req, res) => {
     await enterManualLogin({ acquire: false });
     const page = await getLoginPage();
     const mode = (req.query && req.query.mode) === 'screencast' ? 'screencast' : 'poll';
+    const preset = LIVE_PRESETS[(req.query && req.query.q) || 'fast'] || LIVE_PRESETS.fast;
     res.writeHead(200, {
       'Content-Type': 'multipart/x-mixed-replace; boundary=frame',
       'Cache-Control': 'no-store, no-cache, must-revalidate',
@@ -573,6 +579,20 @@ router.get('/login/live', async (req, res) => {
     };
 
     if (mode === 'screencast') {
+      // Keep the compositor busy with a 2px pulse: screencast only emits on repaint.
+      await page.evaluate(() => {
+        if (document.getElementById('__ninja_live_pulse__')) return;
+        const dot = document.createElement('div');
+        dot.id = '__ninja_live_pulse__';
+        dot.style.cssText =
+          'position:fixed;left:0;top:0;width:2px;height:2px;opacity:.98;pointer-events:none;z-index:2147483647';
+        document.documentElement.appendChild(dot);
+        const style = document.createElement('style');
+        style.textContent =
+          '@keyframes __ninja_live_pulse{from{opacity:.96}to{opacity:1}}' +
+          '#__ninja_live_pulse__{animation:__ninja_live_pulse 1s linear infinite}';
+        document.documentElement.appendChild(style);
+      }).catch(() => {});
       client = await page.context().newCDPSession(page);
       client.on('Page.screencastFrame', async (frame) => {
         if (closed) return;
@@ -582,19 +602,36 @@ router.get('/login/live', async (req, res) => {
         } catch (err) {}
       });
       await client.send('Page.startScreencast', {
-        format: 'jpeg', quality: 32, maxWidth: 860, maxHeight: 560, everyNthFrame: 1,
+        format: 'jpeg',
+        quality: preset.quality,
+        maxWidth: preset.maxWidth,
+        maxHeight: preset.maxHeight,
+        everyNthFrame: 1,
       });
     } else {
+      client = await page.context().newCDPSession(page);
       let busy = false;
       timer = setInterval(async () => {
         if (closed || busy) return;
         busy = true;
         try {
-          const buffer = await page.screenshot({ type: 'jpeg', quality: 32, scale: 'css', optimizeForSpeed: true });
-          writeFrame(buffer);
+          const shot = await client.send('Page.captureScreenshot', {
+            format: 'jpeg',
+            quality: preset.quality,
+            optimizeForSpeed: true,
+            fromSurface: true,
+            clip: {
+              x: 0,
+              y: 0,
+              width: page.viewportSize() ? page.viewportSize().width : 1280,
+              height: page.viewportSize() ? page.viewportSize().height : 800,
+              scale: preset.scale,
+            },
+          });
+          writeFrame(Buffer.from(shot.data, 'base64'));
         } catch (err) {}
         busy = false;
-      }, 70);
+      }, preset.interval);
     }
 
     req.on('close', async () => {
@@ -611,6 +648,40 @@ router.get('/login/live', async (req, res) => {
     if (client) { try { await client.detach(); } catch (e) {} }
     if (!res.headersSent) res.status(err.status || 500).json({ error: err.message });
     else res.end();
+  }
+});
+
+router.get('/login/cursor', async (req, res) => {
+  try {
+    await enterManualLogin({ acquire: false });
+    const page = await getLoginPage();
+    const x = Number((req.query && req.query.x) || 0);
+    const y = Number((req.query && req.query.y) || 0);
+    const info = await page.evaluate(({ x, y }) => {
+      const el = document.elementFromPoint(x, y);
+      if (!el) return { cursor: 'default', tag: null, editable: false };
+      const style = window.getComputedStyle(el);
+      const tag = (el.tagName || '').toLowerCase();
+      const editable = Boolean(
+        el.isContentEditable ||
+          tag === 'input' ||
+          tag === 'textarea' ||
+          el.closest('[contenteditable="true"]'),
+      );
+      const interactive =
+        editable ||
+        tag === 'button' ||
+        tag === 'a' ||
+        tag === 'select' ||
+        Boolean(el.closest('button, a, [role="button"], [role="menuitem"]'));
+      let cursor = style.cursor || 'default';
+      if (editable) cursor = 'text';
+      else if (interactive && (cursor === 'auto' || cursor === 'default')) cursor = 'pointer';
+      return { cursor, tag, editable, interactive };
+    }, { x, y });
+    res.json(info);
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
   }
 });
 
@@ -636,7 +707,7 @@ router.post('/login/input', async (req, res) => {
           y: Number(ev.y) || 0,
           button: ev.button === 'right' ? 'right' : 'left',
           buttons: Number(ev.buttons) || 0,
-          clickCount: Number(ev.action === 'down' ? 1 : 1),
+          clickCount: 1,
           deltaX: Number(ev.deltaX) || 0,
           deltaY: Number(ev.deltaY) || 0,
         });
@@ -655,14 +726,11 @@ router.post('/login/input', async (req, res) => {
         const chunk = String(ev.text || '').slice(0, 500);
         if (!chunk) continue;
         await client.send('Input.insertText', { text: chunk });
-        // Some composers only react to real key events; mirror the last character.
         const last = chunk[chunk.length - 1];
         await client.send('Input.dispatchKeyEvent', {
           type: 'keyDown', key: last, text: last, unmodifiedText: last,
         });
-        await client.send('Input.dispatchKeyEvent', {
-          type: 'keyUp', key: last,
-        });
+        await client.send('Input.dispatchKeyEvent', { type: 'keyUp', key: last });
       }
     }
     res.json({ ok: true, applied: events.length });
@@ -683,7 +751,16 @@ def _patch_live_view(worker):
         return False
     content = path.read_text(encoding="utf-8")
     if LIVE_VIEW_MARKER in content:
-        return False  # already installed
+        # v3 marker: cursors + quality presets. Older blocks get upgraded once.
+        if "/login/cursor" in content and "LIVE_PRESETS" in content:
+            return False
+        start = content.index("// ninja:live-view")
+        end = content.index("module.exports = router;", start)
+        content = (
+            content[:start]
+            + "module.exports = router;"
+            + content[end + len("module.exports = router;") :]
+        )
     anchor = "module.exports = router;"
     if content.count(anchor) != 1:
         return False
