@@ -65,11 +65,11 @@ def test_static_javascript_is_served_with_javascript_mime(loaded):
 
 
 def test_health_endpoint_is_public_and_leaks_no_paths(loaded):
-    client, _ = loaded
+    client, ctx = loaded
     res = client.get("/api/health")
     assert res.status_code == 200
     body = res.json()
-    assert body["ok"] is True and body["version"].startswith("0.6")
+    assert body["ok"] is True and body["version"] == ctx.app.version
     assert isinstance(body["gateway_installed"], bool)
     assert "data_path" not in res.text and "gateway_path" not in res.text
     assert "api_secret" not in res.text
@@ -733,6 +733,66 @@ def test_account_status_exposes_worker_display_for_vnc(loaded, monkeypatch):
     )
     assert worker_display(ctx, ctx.query_account(acc["id"])) is None
     ctx.processes.pop(acc["id"], None)  # do not let the fake process reach shutdown
+
+
+
+def test_project_url_is_stored_validated_and_passed_to_the_worker(loaded):
+    """Every new chat for an account must open inside the configured ChatGPT project."""
+    from hub.workers import worker_env
+
+    client, ctx = loaded
+    h = auth(client)
+    project = "https://chatgpt.com/g/g-p-abc123-ninja-image-hub/project"
+    acc = client.post(
+        "/api/accounts",
+        json={"name": "Project", "autostart": False, "project_url": project},
+        headers=h,
+    )
+    assert acc.status_code == 201, acc.text
+    aid = acc.json()["id"]
+    assert acc.json()["project_url"] == project
+    assert client.get("/api/accounts").json()[0]["project_url"] == project
+
+    env = worker_env(ctx, ctx.query_account(aid))
+    assert env["CHATGPT_PROJECT_URL"] == project
+
+    # Editing stores the new URL, and clearing it goes back to the normal chat list.
+    assert client.patch(
+        f"/api/accounts/{aid}", json={"name": "Project"}, headers=h
+    ).json()["project_url"] == ""
+    assert client.patch(
+        f"/api/accounts/{aid}",
+        json={"name": "Project", "project_url": project},
+        headers=h,
+    ).json()["project_url"] == project
+
+    bad = client.post(
+        "/api/accounts",
+        json={"name": "Bad project", "project_url": "https://example.com/not-a-project"},
+        headers=h,
+    )
+    assert bad.status_code == 422
+
+
+def test_project_url_patch_is_idempotent_and_skips_unknown_upstream(tmp_path):
+    from hub.workers import _patch_project_url
+
+    worker = tmp_path / "gateway"
+    (worker / "src").mkdir(parents=True)
+    chatgpt = worker / "src" / "chatgpt.js"
+    chatgpt.write_text(
+        "const CHATGPT_URL = 'https://chatgpt.com';\n// rest of upstream\n",
+        encoding="utf-8",
+    )
+    assert _patch_project_url(worker) is True
+    patched = chatgpt.read_text(encoding="utf-8")
+    assert "ninja:project-url" in patched
+    assert "process.env.CHATGPT_PROJECT_URL" in patched
+    assert _patch_project_url(worker) is False  # idempotent
+
+    chatgpt.write_text("// upstream changed\n", encoding="utf-8")
+    assert _patch_project_url(worker) is False
+    assert chatgpt.read_text(encoding="utf-8") == "// upstream changed\n"
 
 
 def test_worker_command_gives_every_linux_worker_its_own_xvfb():

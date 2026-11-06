@@ -10,9 +10,15 @@ import {
   loadGallery,
 } from "./modules/controller.js";
 import { renderAnalytics, renderJobs } from "./modules/views.js";
-import { onAccountAction, openAdd, initLoginDialog } from "./modules/accounts.js";
+import {
+  onAccountAction,
+  openAdd,
+  initLoginDialog,
+  initResolveDialog,
+} from "./modules/accounts.js";
 
 initLoginDialog();
+initResolveDialog();
 
 $("loginForm").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -83,6 +89,7 @@ $("addForm").addEventListener("submit", async (e) => {
     autostart: $("accAutostart").checked,
     plan_label: $("accPlan").value,
     parallel_limit: Number($("accParallel").value),
+    project_url: $("accProject").value.trim(),
   };
   try {
     if (S.editingAccountId) {

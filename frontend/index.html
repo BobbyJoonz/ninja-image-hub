@@ -241,6 +241,14 @@
                   <span>P95 generation job</span
                   ><strong id="latencyP95">—</strong>
                 </div>
+                <div class="stat-mini">
+                  <span>Median queue wait</span
+                  ><strong id="queueWaitP50">—</strong>
+                </div>
+                <div class="stat-mini">
+                  <span>Unresolved unknown</span
+                  ><strong id="unresolvedUnknown">0</strong>
+                </div>
               </article>
             </div>
             <article class="panel account-report">
@@ -462,6 +470,58 @@
                         >New browsers are refused below this free RAM instead
                         of OOM-killing running accounts. 0 disables the
                         guard</small
+                      ></label
+                    >
+                    <label
+                      >Preview retention (days)<input
+                        name="preview_retention_days"
+                        type="number"
+                        min="0"
+                        max="3650"
+                        step="1"
+                        required
+                      /><small
+                        >Delete derived WebP previews older than this. 0
+                        disables. Originals are never touched</small
+                      ></label
+                    >
+                    <label
+                      >Export retention (hours)<input
+                        name="export_retention_hours"
+                        type="number"
+                        min="0"
+                        max="8760"
+                        step="1"
+                        required
+                      /><small
+                        >Delete leftover ZIP files older than this. 0
+                        disables</small
+                      ></label
+                    >
+                    <label
+                      >Worker log limit (MB)<input
+                        name="worker_log_max_mb"
+                        type="number"
+                        min="0"
+                        max="1024"
+                        step="1"
+                        required
+                      /><small
+                        >Rotate a stopped worker's log above this size. 0
+                        disables</small
+                      ></label
+                    >
+                    <label
+                      >Minimum free disk (MB)<input
+                        name="min_free_disk_mb"
+                        type="number"
+                        min="0"
+                        max="1048576"
+                        step="64"
+                        required
+                      /><small
+                        >Below this, new dispatch pauses so nothing fails on
+                        a full disk. 0 disables the guard</small
                       ></label
                     >
                     <div class="control-actions">
@@ -837,7 +897,19 @@ GET /v1/jobs/&lt;job UUID&gt;</pre>
           id="accEmail"
           maxlength="160"
           placeholder="name@example.com"
-        /><label for="accPlan"
+        /><label for="accProject">ChatGPT project URL (optional)</label
+        ><input
+          id="accProject"
+          maxlength="500"
+          placeholder="https://chatgpt.com/g/g-p-.../project"
+        />
+        <p class="fine-print">
+          Create a ChatGPT project named “Ninja Image Hub”, open it and paste the
+          address-bar URL here. New generations for this account then appear inside
+          that project instead of the normal chat list. Project links are
+          per-account; apply with Stop → Start.
+        </p>
+        <label for="accPlan"
           >Subscription label (manual — not verified automatically)</label
         ><select id="accPlan">
           <option value="unknown">Unknown</option>
@@ -971,6 +1043,69 @@ GET /v1/jobs/&lt;job UUID&gt;</pre>
       </div>
       <h2 id="logsTitle">Worker logs</h2>
       <pre id="logsContent">Loading…</pre>
+    </dialog>
+    <dialog id="resolveDialog" class="modal">
+      <form id="resolveForm">
+        <div class="modal-top">
+          <span class="modal-tag">JOB RECONCILIATION</span
+          ><button
+            type="button"
+            class="close-btn"
+            id="closeResolve"
+            aria-label="Close reconciliation dialog"
+          >
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-x"></use></svg>
+          </button>
+        </div>
+        <h2>Resolve unknown job</h2>
+        <p class="fine-print">
+          The upstream outcome is unknown. Nothing is retried automatically:
+          record what you verified so a delivered image is not generated twice
+          and the queue can be closed. This never calls the provider.
+        </p>
+        <input type="hidden" id="resolveJobId" />
+        <div class="radio-stack" role="radiogroup" aria-label="Resolution">
+          <label class="radio-row"
+            ><input type="radio" name="resolution" value="delivered_manually" />
+            <span
+              ><strong>Delivered manually</strong
+              ><small>I checked upstream and the image exists.</small></span
+            ></label
+          >
+          <label class="radio-row"
+            ><input type="radio" name="resolution" value="not_delivered" />
+            <span
+              ><strong>Not delivered</strong
+              ><small
+                >Nothing appeared upstream; I will re-submit
+                consciously.</small
+              ></span
+            ></label
+          >
+          <label class="radio-row"
+            ><input type="radio" name="resolution" value="abandoned" />
+            <span
+              ><strong>Abandon</strong
+              ><small>Give up on this job and keep the record.</small></span
+            ></label
+          >
+        </div>
+        <label for="resolveNote">Note (optional)</label>
+        <textarea
+          id="resolveNote"
+          rows="3"
+          maxlength="500"
+          placeholder="What did you verify, and where?"
+        ></textarea>
+        <div class="modal-actions">
+          <button type="button" class="btn secondary" id="cancelResolve">
+            Cancel
+          </button>
+          <button type="submit" class="btn primary" id="saveResolve">
+            Save resolution
+          </button>
+        </div>
+      </form>
     </dialog>
     <noscript
       ><p style="padding: 20px; color: white">

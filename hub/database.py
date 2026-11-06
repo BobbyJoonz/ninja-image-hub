@@ -87,6 +87,7 @@ def initialize_database(ctx):
         Column("parallel_limit", Integer, nullable=False, default=2),
         Column("dispatch_enabled", Integer, nullable=False, default=1),
         Column("cooldown_until", String(40)),
+        Column("project_url", String(500), nullable=False, default=""),
         Column("created_at", String(40), nullable=False),
     )
 
@@ -111,6 +112,10 @@ def initialize_database(ctx):
         Column("created_at", String(40), nullable=False),
         Column("started_at", String(40)),
         Column("finished_at", String(40)),
+        # Operator reconciliation for upstream-uncertain jobs (never automatic).
+        Column("resolution", String(32)),
+        Column("resolved_at", String(40)),
+        Column("resolution_note", Text),
     )
 
     ctx.job_images = Table(
@@ -157,6 +162,7 @@ def initialize_database(ctx):
                 "parallel_limit": "INTEGER DEFAULT 2 NOT NULL",
                 "cooldown_until": "VARCHAR(40)",
                 "dispatch_enabled": "INTEGER DEFAULT 1 NOT NULL",
+                "project_url": "VARCHAR(500) DEFAULT '' NOT NULL",
             },
             "jobs": {
                 "quality_preference": "VARCHAR(16) DEFAULT 'best' NOT NULL",
@@ -167,6 +173,9 @@ def initialize_database(ctx):
                 "image_sha256": "VARCHAR(64)",
                 "n": "INTEGER DEFAULT 1 NOT NULL",
                 "idempotency_key": "VARCHAR(128)",
+                "resolution": "VARCHAR(32)",
+                "resolved_at": "VARCHAR(40)",
+                "resolution_note": "TEXT",
             },
         }.items():
             current = {c["name"] for c in inspector.get_columns(table_name)}
@@ -209,6 +218,9 @@ def initialize_database(ctx):
         )
         conn.exec_driver_sql(
             "CREATE INDEX IF NOT EXISTS ix_jobs_queue ON jobs(status, account_id, created_at, id)"
+        )
+        conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_jobs_status_resolution ON jobs(status, resolved_at)"
         )
         legacy = (
             conn.execute(

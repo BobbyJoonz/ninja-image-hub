@@ -79,6 +79,9 @@ export function accountCards(arr, archived = false) {
         a.auto_login_configured
           ? '<span class="plan-pending">Auto-login</span>'
           : "",
+        a.project_url
+          ? '<span class="plan-pending">Project</span>'
+          : "",
         a.cooldown_until
           ? `<span>Cooldown: <strong>${esc(a.cooldown_until)}</strong></span>`
           : "",
@@ -111,11 +114,12 @@ export function filterJobs(jobs, status = "all", query = "", accountNames = {}) 
     if (status === "active" && !["queued", "running"].includes(j.status))
       return false;
     if (status === "completed" && j.status !== "completed") return false;
-    if (
-      status === "problems" &&
-      !["failed", "unknown", "rate_limited"].includes(j.status)
-    )
-      return false;
+    if (status === "problems") {
+      const isProblem = ["failed", "unknown", "rate_limited"].includes(j.status);
+      // A reconciled unknown job is closed; it should not keep asking for attention.
+      const closed = j.status === "unknown" && Boolean(j.resolution);
+      if (!isProblem || closed) return false;
+    }
     if (!q) return true;
     const haystack = [j.prompt, j.id, j.status, accountNames[j.account_id] || ""]
       .join(" ")
@@ -135,10 +139,28 @@ export function renderJobs() {
       : "0 jobs";
   $("jobsTable").innerHTML = filtered.length
     ? filtered
-        .map(
-          (j) =>
-            `<tr><td data-label="JOB / PROMPT"><div class="job-prompt" title="${esc(j.prompt)}">${esc(trunc(j.prompt, 90))}</div><div class="job-id">${esc(j.id.slice(0, 8))}</div></td><td data-label="ACCOUNT">${esc(map[j.account_id] || "Deleted account")}</td><td data-label="STATUS">${statusPill(j.status)}<div class="job-id">${j.image_count || 0}/${j.n || 1} images</div></td><td data-label="CREATED">${esc(new Date(j.created_at).toLocaleString())}</td><td data-label="OUTPUT">${j.image_url ? `<a href="${j.image_url}" target="_blank" rel="noopener">${uiIcon("external")} View ${j.image_count || 1} image(s)</a>` : esc(trunc(j.error || "—", 60))}</td><td data-label="ACTION">${j.status === "queued" ? `<button class="small-action danger" data-action="delete-job" data-id="${j.id}">Cancel</button>` : j.status !== "running" ? `<button class="small-action" data-action="delete-job" data-id="${j.id}">Delete</button>` : ""}</td></tr>`,
-        )
+        .map((j) => {
+          const resolved = Boolean(j.resolution);
+          const resolutionLabel = resolved
+            ? String(j.resolution).replaceAll("_", " ")
+            : "";
+          const action =
+            j.status === "unknown" && !resolved
+              ? `<button class="small-action accent" data-action="resolve-job" data-id="${j.id}">${uiIcon("sparkles")} Resolve</button>`
+              : j.status === "queued"
+                ? `<button class="small-action danger" data-action="delete-job" data-id="${j.id}">Cancel</button>`
+                : j.status !== "running"
+                  ? `<button class="small-action" data-action="delete-job" data-id="${j.id}">Delete</button>`
+                  : "";
+          const resolution = resolved
+            ? `<span class="job-resolution">resolved · <strong>${esc(resolutionLabel)}</strong>${
+                j.resolved_at
+                  ? " · " + esc(new Date(j.resolved_at).toLocaleString())
+                  : ""
+              }</span>`
+            : "";
+          return `<tr><td data-label="JOB / PROMPT"><div class="job-prompt" title="${esc(j.prompt)}">${esc(trunc(j.prompt, 90))}</div><div class="job-id">${esc(j.id.slice(0, 8))}</div></td><td data-label="ACCOUNT">${esc(map[j.account_id] || "Deleted account")}</td><td data-label="STATUS">${statusPill(j.status)}<div class="job-id">${j.image_count || 0}/${j.n || 1} images</div>${resolution}</td><td data-label="CREATED">${esc(new Date(j.created_at).toLocaleString())}</td><td data-label="OUTPUT">${j.image_url ? `<a href="${j.image_url}" target="_blank" rel="noopener">${uiIcon("external")} View ${j.image_count || 1} image(s)</a>` : esc(trunc(j.error || "—", 60))}</td><td data-label="ACTION">${action}</td></tr>`;
+        })
         .join("")
     : `<tr><td colspan="6" class="jobs-empty">${
         all.length
@@ -177,6 +199,14 @@ export function renderSettings() {
     ["Secure cookies", s.cookie_secure ? "HTTPS only" : "Local HTTP only"],
     ["Gateway source", "stufently/gpt-web-gateway"],
     ["Data directory", s.data_path],
+    [
+      "Disk free",
+      (s.disk_free_mb == null ? "unknown" : compact(s.disk_free_mb) + " MB") +
+        (s.disk_low ? " · LOW (dispatch paused)" : ""),
+    ],
+    ["Preview retention", s.preview_retention_days + " days"],
+    ["Export retention", s.export_retention_hours + " hours"],
+    ["Worker log limit", s.worker_log_max_mb + " MB"],
   ];
   $("settingsList").innerHTML = rows
     .map(
@@ -247,6 +277,10 @@ export function renderAnalytics() {
   $("oldestJob").textContent = relativeMinutes(a.queued_oldest_age_min);
   $("latencyP50").textContent = fmtSec(a.p50_sec);
   $("latencyP95").textContent = fmtSec(a.p95_sec);
+  if ($("queueWaitP50"))
+    $("queueWaitP50").textContent = fmtSec(a.queue_wait_p50_sec);
+  if ($("unresolvedUnknown"))
+    $("unresolvedUnknown").textContent = compact(a.unresolved_unknown);
   $("analyticsAccounts").innerHTML = a.accounts.length
     ? a.accounts
         .map(
@@ -294,10 +328,18 @@ export function renderOperations() {
       const el = frm.elements.namedItem(key);
       if (el) el.value = c[key];
     });
+  const diskFree = S.settings.disk_free_mb;
+  const diskLow = Boolean(S.settings.disk_low);
   $("opsCapacity").innerHTML =
-    `<div><span>Running workers</span><b>${compact(S.control.active_workers)} / ${compact(c.max_running_accounts)}</b></div><div><span>Active requests</span><b>${compact(S.queue.running)} / ${compact(c.global_max_inflight)}</b></div><div><span>Waiting jobs</span><b>${compact(S.queue.queued)} / ${compact(c.max_pending_jobs)}</b></div><div><span>Batch limit</span><b>${compact(c.max_batch_images)}</b></div><div><span>Tab limit</span><b>${compact(c.gateway_max_tabs)} / worker</b></div>`;
+    `<div><span>Running workers</span><b>${compact(S.control.active_workers)} / ${compact(c.max_running_accounts)}</b></div><div><span>Active requests</span><b>${compact(S.queue.running)} / ${compact(c.global_max_inflight)}</b></div><div><span>Waiting jobs</span><b>${compact(S.queue.queued)} / ${compact(c.max_pending_jobs)}</b></div><div><span>Batch limit</span><b>${compact(c.max_batch_images)}</b></div><div><span>Tab limit</span><b>${compact(c.gateway_max_tabs)} / worker</b></div><div><span>Disk free</span><b class="${diskLow ? "warn" : ""}">${diskFree == null ? "unknown" : compact(diskFree) + " MB"}</b></div>`;
+  const diskBlocked = Boolean(S.settings.disk_low);
+  const statusText = paused
+    ? "Dispatch paused"
+    : diskBlocked
+      ? "Dispatch paused · low disk"
+      : "Queue operational";
   $("opsStrip").innerHTML =
-    `<span class="live-indicator ${paused ? "paused" : ""}"></span><strong>${paused ? "Dispatch paused" : "Queue operational"}</strong><span>${compact(S.queue.queued)} pending</span><span>${compact(S.queue.running)} active / ${compact(c.global_max_inflight)} slots</span><button class="text-button" data-go="operations">Adjust capacity ${uiIcon("arrow-right")}</button>`;
+    `<span class="live-indicator ${paused || diskBlocked ? "paused" : ""}"></span><strong>${statusText}</strong><span>${compact(S.queue.queued)} pending</span><span>${compact(S.queue.running)} active / ${compact(c.global_max_inflight)} slots</span><span>${S.settings.disk_free_mb == null ? "" : compact(S.settings.disk_free_mb) + " MB free"}</span><button class="text-button" data-go="operations">Adjust capacity ${uiIcon("arrow-right")}</button>`;
   $("controlAudit").innerHTML = S.audit.length
     ? S.audit
         .map((x) => {

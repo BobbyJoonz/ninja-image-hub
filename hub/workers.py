@@ -28,6 +28,7 @@ def safe_account(ctx, acc):
             "parallel_limit",
             "cooldown_until",
             "dispatch_enabled",
+            "project_url",
         ]
     } | ctx.account_status(acc)
     account["auto_login_configured"] = (
@@ -245,6 +246,34 @@ def _patch_popup_follow(worker):
     return True
 
 
+PROJECT_URL_MARKER = "ninja:project-url"
+
+
+def _patch_project_url(worker):
+    """Route every new ChatGPT conversation into the account's project.
+
+    Upstream opens a new chat by navigating to the CHATGPT_URL constant. Rewriting that
+    one constant to honour CHATGPT_PROJECT_URL keeps every generation inside the project
+    instead of the normal chat list. Guarded and idempotent: an upstream change simply
+    skips the patch.
+    """
+    path = pathlib.Path(worker) / "src" / "chatgpt.js"
+    if not path.is_file():
+        return False
+    content = path.read_text(encoding="utf-8")
+    if PROJECT_URL_MARKER in content:
+        return False
+    old = "const CHATGPT_URL = 'https://chatgpt.com';"
+    if content.count(old) != 1:
+        return False
+    new = (
+        "// ninja:project-url — new conversations open inside the configured project.\n"
+        "const CHATGPT_URL = process.env.CHATGPT_PROJECT_URL || 'https://chatgpt.com';"
+    )
+    path.write_text(content.replace(old, new, 1), encoding="utf-8")
+    return True
+
+
 def ensure_worker_copy(ctx, acc):
     if not ctx.runtime_installed():
         raise RuntimeError(
@@ -271,8 +300,9 @@ def ensure_worker_copy(ctx, acc):
         )
     (worker / "auth").mkdir(exist_ok=True)
     (worker / "public" / "images").mkdir(parents=True, exist_ok=True)
-    # Apply the OAuth popup guard on every start, so existing workspaces get it too.
+    # Apply the gateway guards on every start, so existing workspaces get them too.
     _patch_popup_follow(worker)
+    _patch_project_url(worker)
     return worker
 
 
@@ -362,6 +392,7 @@ def worker_env(ctx, acc):
             "CHATGPT_EMAIL": (auto or {}).get("email", ""),
             "CHATGPT_PASSWORD": (auto or {}).get("password", ""),
             "CHATGPT_TOTP_SECRET": (auto or {}).get("totp_secret", ""),
+            "CHATGPT_PROJECT_URL": str(acc.get("project_url") or ""),
             "DEBUG_SNAPSHOTS": "0",
             "STALL_SNAPSHOTS": "0",
         }

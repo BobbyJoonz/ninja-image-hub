@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -11,6 +13,7 @@ class AccountBody(BaseModel):
     email_label: str = Field(default="", max_length=160)
     plan_label: str = "unknown"
     autostart: bool = False
+    project_url: str = Field(default="", max_length=500)
 
 
 class AccountUpdate(BaseModel):
@@ -19,6 +22,7 @@ class AccountUpdate(BaseModel):
     email_label: str = Field(default="", max_length=160)
     plan_label: str = "unknown"
     autostart: bool = False
+    project_url: str = Field(default="", max_length=500)
 
 
 class ConfirmRemove(BaseModel):
@@ -66,4 +70,19 @@ class ControlUpdate(BaseModel):
     target_images: int | None = Field(default=None, ge=1, le=100000)
     target_window_hours: int | None = Field(default=None, ge=1, le=24)
     idle_worker_shutdown_minutes: int | None = Field(default=None, ge=0, le=1440)
+    preview_retention_days: int | None = Field(default=None, ge=0, le=3650)
+    export_retention_hours: int | None = Field(default=None, ge=0, le=8760)
+    worker_log_max_mb: int | None = Field(default=None, ge=0, le=1024)
+    min_free_disk_mb: int | None = Field(default=None, ge=0, le=1048576)
     dispatch_paused: bool | None = None
+
+
+class ResolveBody(BaseModel):
+    """Operator verdict for a job whose upstream outcome was unknown.
+
+    This never retries anything: it only records what the operator verified, so a
+    delivered-but-unreported image is not generated twice and a lost job can be closed.
+    """
+
+    resolution: Literal["delivered_manually", "not_delivered", "abandoned"]
+    note: str = Field(default="", max_length=500)

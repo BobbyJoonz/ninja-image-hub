@@ -147,6 +147,25 @@ def list_accounts(ctx, include_archived: bool = True):
     return list(ctx.status_pool.map(ctx.safe_account, rows))
 
 
+def _clean_project_url(value):
+    """Validate the optional per-account ChatGPT project URL (empty = normal chat list)."""
+    url = (value or "").strip()
+    if not url:
+        return ""
+    if (
+        len(url) > 500
+        or any(ch.isspace() for ch in url)
+        or not url.startswith("https://chatgpt.com/")
+        or "/g/" not in url
+    ):
+        raise HTTPException(
+            422,
+            "Project URL must look like https://chatgpt.com/g/g-p-.../project "
+            "(open the project in ChatGPT and copy the address bar).",
+        )
+    return url
+
+
 def add_account(ctx, body: AccountBody):
     if body.plan_label not in {"unknown", "free", "plus", "pro", "other"}:
         raise HTTPException(422, "Invalid manual plan label.")
@@ -165,6 +184,7 @@ def add_account(ctx, body: AccountBody):
         "parallel_limit": body.parallel_limit,
         "cooldown_until": None,
         "dispatch_enabled": 1,
+        "project_url": _clean_project_url(body.project_url),
     }
     if not acc["name"]:
         raise HTTPException(422, "Account name required.")
@@ -197,6 +217,7 @@ def edit_account(ctx, account_id: str, body: AccountUpdate):
                 plan_label=body.plan_label,
                 plan_checked_at=ctx.now() if body.plan_label != "unknown" else None,
                 parallel_limit=body.parallel_limit,
+                project_url=_clean_project_url(body.project_url),
             )
         )
     return ctx.safe_account(ctx.query_account(account_id))
