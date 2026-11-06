@@ -34,9 +34,18 @@ def read_auto_login(ctx, account_id):
 def auto_login_status(ctx, account_id):
     if not ctx.query_account(account_id):
         raise HTTPException(404, "Account not found.")
+    path = _auto_login_path(ctx, account_id)
+    if not path.is_file():
+        return {"configured": False, "email": None, "has_totp": False}
     data = read_auto_login(ctx, account_id)
     if not data:
-        return {"configured": False, "email": None, "has_totp": False}
+        # A corrupt/hand-edited file would silently disable auto-login on the next start.
+        return {
+            "configured": False,
+            "email": None,
+            "has_totp": False,
+            "error": "stored credentials are unreadable; save them again",
+        }
     return {
         "configured": True,
         "email": data.get("email"),

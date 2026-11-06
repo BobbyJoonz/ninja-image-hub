@@ -41,8 +41,10 @@ class GenerateBody(BaseModel):
 
 
 class LoginClick(BaseModel):
-    x: int = Field(ge=0, le=1280)
-    y: int = Field(ge=0, le=800)
+    # The worker viewport is not fixed (Playwright default vs Xvfb screen), so allow the
+    # full range and let the client scale by the screenshot's real pixel size.
+    x: int = Field(ge=0, le=4096)
+    y: int = Field(ge=0, le=4096)
 
 
 class LoginType(BaseModel):

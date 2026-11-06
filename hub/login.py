@@ -1,23 +1,52 @@
 import asyncio
+import html
 import json
 
 import httpx
 from fastapi import HTTPException, Request
 from fastapi.responses import HTMLResponse, Response
-from .schemas import LoginClick, LoginType, LoginKey
+from . import login_page as login_page_template
+from .schemas import LoginClick, LoginKey, LoginType
+
+# GET /login (init) waits for the browser's exclusive lock, which a running generation
+# job can hold for minutes. Fail fast with a clear message instead of hanging the page.
+INIT_TIMEOUT = httpx.Timeout(20.0, connect=4.0)
+ACTION_TIMEOUT = httpx.Timeout(45.0, connect=4.0)
 
 
-async def ensure_worker_awake(ctx, acc, timeout=12.0):
-    """Wake an idle-reaped browser before a remote-login request.
+def _display_note(ctx):
+    mode = ctx.display_state()
+    if mode == "xvfb":
+        return (
+            "This server draws the browser on a virtual display (Xvfb), so there is no "
+            "window on a desk. Sign in through this page."
+        )
+    if mode == "missing":
+        return (
+            "No browser display is available on this host. Install xvfb or run the panel "
+            "with a real DISPLAY before starting workers."
+        )
+    if mode == "x11":
+        return (
+            "An X11 display is available on the server; you may also sign in through the "
+            "worker window if you can see it."
+        )
+    return (
+        "The worker opens its own Chrome window on this machine; you can also sign in "
+        "there and then press Refresh status in the panel."
+    )
 
-    The browser is normally stopped when the account is idle (RAM saving). Opening the
-    login page must start it again instead of returning "worker unavailable".
-    """
-    ctx.touch_account(acc["id"])
+
+async def ensure_worker_awake(ctx, acc, timeout=15.0):
+    """Make sure a healthy worker exists before a remote-login request (waking it if idle)."""
     if not ctx.runtime_installed():
-        return False
+        raise HTTPException(
+            409,
+            "Gateway runtime is not installed. Run python scripts/prepare_gateway.py.",
+        )
+    ctx.touch_account(acc["id"])
     if ctx.process_state(acc) == "running" and ctx.upstream_probe(acc):
-        return True
+        return
     ctx.wake_worker_async(acc)
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout
@@ -25,30 +54,41 @@ async def ensure_worker_awake(ctx, acc, timeout=12.0):
         await asyncio.sleep(0.5)
         if ctx.process_state(acc) == "running" and ctx.upstream_probe(acc):
             ctx.touch_account(acc["id"])
-            return True
-    return False
+            return
+    raise HTTPException(
+        409,
+        "The browser did not start within 15 seconds. Check Accounts → Logs and run "
+        "scripts/doctor.py, then press Open ChatGPT again.",
+    )
 
 
 def login_page(ctx, account_id: str, request: Request):
     acc = ctx.query_account(account_id)
     if not acc:
         raise HTTPException(404, "Account not found.")
-    # Opening the login page is intent to use the browser: wake it if it was idle-reaped.
+    # Opening the login page is explicit intent to use the browser: wake it if the idle
+    # reaper stopped it. (An operator Stop is also overridden here on purpose.)
     ctx.touch_account(account_id)
     if ctx.process_state(acc) != "running":
         ctx.wake_worker_async(acc)
-    import html
-
-    title = html.escape(acc["name"])
-    csrf = json.dumps(request.session["csrf"])
-    base = json.dumps(f"/api/accounts/{account_id}/remote")
+    csrf = request.session.get("csrf")
+    if not csrf:
+        raise HTTPException(401, "Panel session changed; sign in again.")
     return HTMLResponse(
-        f"""<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Connect {title} · Ninja Image Hub</title>\n<style>body{{background:#080f1e;color:#e8eefb;font-family:system-ui;margin:0;padding:24px}}main{{max-width:1250px;margin:auto}}header{{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}}h2{{margin:0 0 6px}}p{{color:#9caccc}}button{{border:1px solid #3b506f;background:#172940;color:white;border-radius:9px;padding:11px 15px;cursor:pointer}}button:hover{{background:#284267}}input{{flex:1;min-width:230px;background:#111f32;border:1px solid #3b506f;color:#fff;border-radius:9px;padding:12px}}.toolbar{{display:flex;gap:10px;flex-wrap:wrap;margin:18px 0}}.screen{{display:block;width:100%;max-width:1280px;border:1px solid #3b506f;border-radius:14px;background:#15243a;cursor:crosshair}}#status{{margin:12px 0;color:#9caccc}}.notice{{padding:13px;background:#152137;border:1px solid #2c496f;border-radius:10px}}.green{{color:#68dfbe}}</style></head><body><main><header><div><h2>Connect: {title}</h2><p>Private browser session · Manual login · Session saved locally</p></div><button onclick="window.close()">Close</button></header><p class="notice">Only sign in to an account you own. Do not share this page. Your credentials are typed directly into the worker browser; this panel does not store them. Do not use this on a publicly exposed HTTP connection.</p><div class="toolbar"><button onclick="navigate()">Open ChatGPT</button><button onclick="pressKey('Tab')">Tab</button><button onclick="pressKey('Enter')">Enter</button><button onclick="pressKey('Escape')">Esc</button><button onclick="save()">Save Session</button><button onclick="refresh()">Refresh</button></div><div class="toolbar"><input id="type" type="password" placeholder="Type into focused browser field (hidden by default)" autocomplete="off"><button onclick="typeNow()">Type</button><button onclick="toggleShow()">Show / Hide</button></div><div id="status">Initializing browser session…</div><img id="screen" class="screen" alt="Live browser screenshot" onclick="clickScreen(event)"></main><script>\nconst BASE={base}, CSRF={csrf};let busy=false;\nasync function request(path,body){{const opts={{method:'POST',headers:{{'content-type':'application/json','x-csrf-token':CSRF}},body:JSON.stringify(body||{{}})}};const res=await fetch(BASE+'/'+path,opts);const data=await res.json();if(!res.ok)throw Error(data.detail||data.error||'Request failed');return data;}}\nfunction msg(t){{document.getElementById('status').textContent=t;}}\nasync function refresh(){{try{{const r=await fetch(BASE+'/screenshot?ts='+Date.now(),{{cache:'no-store'}});if(!r.ok)throw Error('Worker unavailable or login session not opened');const b=await r.blob();let im=document.getElementById('screen');if(im.dataset.url)URL.revokeObjectURL(im.dataset.url);im.dataset.url=URL.createObjectURL(b);im.src=im.dataset.url;msg('Browser screenshot updated');}}catch(e){{msg(e.message);}}}}\nasync function action(path,body){{try{{msg('Working…');await request(path,body);setTimeout(refresh,550);}}catch(e){{msg(e.message);}}}}\nfunction navigate(){{action('navigate',{{url:'https://chatgpt.com'}});}} function pressKey(key){{action('key',{{key}});}}\nfunction toggleShow(){{const e=document.getElementById('type');e.type=e.type==='password'?'text':'password';}}\nfunction typeNow(){{const el=document.getElementById('type'),v=el.value;if(!v)return;el.value='';action('type',{{text:v}});}}\ndocument.getElementById('type').addEventListener('keydown',e=>{{if(e.key==='Enter')typeNow();}});\nfunction clickScreen(e){{const rect=e.target.getBoundingClientRect();action('click',{{x:Math.round((e.clientX-rect.left)/rect.width*1280),y:Math.round((e.clientY-rect.top)/rect.height*800)}});}}\nasync function save(){{try{{await request('save');msg('Session saved. Return to Accounts and refresh status.');}}catch(e){{msg(e.message);}}}}\nasync function init(){{try{{await fetch(BASE+'/init',{{cache:'no-store'}});}}catch(e){{}}refresh();}}init();setInterval(refresh,4000);\n</script></body></html>""",
+        login_page_template.render(
+            account_id=account_id,
+            title=html.escape(acc["name"]),
+            csrf_js=json.dumps(csrf),
+            display_note=html.escape(_display_note(ctx)),
+        ),
         headers={
             "Cache-Control": "no-store",
             "X-Frame-Options": "DENY",
             "Referrer-Policy": "no-referrer",
-            "Content-Security-Policy": "default-src 'self' blob:; img-src 'self' blob:; style-src 'unsafe-inline'; script-src 'unsafe-inline' 'self'; connect-src 'self'",
+            "Content-Security-Policy": (
+                "default-src 'self' blob:; img-src 'self' blob:; style-src 'unsafe-inline'; "
+                "script-src 'unsafe-inline' 'self'; connect-src 'self'"
+            ),
         },
     )
 
@@ -57,40 +97,50 @@ async def upstream_login_call(ctx, account_id, action, data=None):
     acc = ctx.query_account(account_id)
     if not acc:
         raise HTTPException(404, "Account not found.")
-    if not ctx.runtime_installed():
-        raise HTTPException(
-            409, "Install gateway runtime first: python scripts/prepare_gateway.py"
-        )
-    if not await ensure_worker_awake(ctx, acc):
-        raise HTTPException(
-            409,
-            "Worker is starting; wait a few seconds and press Refresh.",
-        )
+    await ensure_worker_awake(ctx, acc)
+    timeout = INIT_TIMEOUT if action == "init" else ACTION_TIMEOUT
     try:
-        async with httpx.AsyncClient(trust_env=False, timeout=45) as client:
+        async with httpx.AsyncClient(trust_env=False, timeout=timeout) as client:
             headers = {"Authorization": f"Bearer {acc['api_secret']}"}
             url = (
-                ctx.upstream(acc)
-                + "/login"
-                + ("/" + action if action != "init" else "")
+                ctx.upstream(acc) + "/login" + ("/" + action if action != "init" else "")
             )
             method = "GET" if action in ("screenshot", "init") else "POST"
             res = await client.request(
                 method, url, headers=headers, json=data if method == "POST" else None
             )
-    except httpx.RequestError as e:
-        raise HTTPException(503, "Gateway not ready.")
+    except httpx.TimeoutException:
+        if action == "init":
+            raise HTTPException(
+                409,
+                "The browser is busy with a running generation job. The login session "
+                "opens when it finishes; retrying automatically.",
+            )
+        raise HTTPException(
+            504, "The gateway did not answer in time. Press Refresh and try again."
+        )
+    except httpx.RequestError as exc:
+        raise HTTPException(503, "Gateway not ready: " + str(exc)[:120])
     if res.status_code >= 400:
         try:
             detail = res.json().get("error", "Upstream error")
         except ValueError:
             detail = "Upstream failed."
+        if action == "screenshot" and res.status_code == 409:
+            raise HTTPException(409, "login session is not active — press Open ChatGPT")
         raise HTTPException(res.status_code, str(detail)[:200])
     return res
 
 
 async def remote_init(ctx, account_id: str):
-    await ctx.upstream_login_call(account_id, "init")
+    """Open (or reuse) the gateway's manual-login session. One retry for a lease race."""
+    try:
+        await ctx.upstream_login_call(account_id, "init")
+    except HTTPException as first:
+        if first.status_code not in (409, 503):
+            raise
+        await asyncio.sleep(0.6)
+        await ctx.upstream_login_call(account_id, "init")
     return {"ok": True}
 
 
@@ -129,12 +179,41 @@ async def remote_key(ctx, account_id: str, body: LoginKey):
 
 
 async def remote_nav(ctx, account_id: str):
-    await ctx.upstream_login_call(
-        account_id, "navigate", {"url": "https://chatgpt.com"}
-    )
+    await ctx.upstream_login_call(account_id, "navigate", {"url": "https://chatgpt.com"})
     return {"ok": True}
 
 
 async def remote_save(ctx, account_id: str):
+    """Persist the browser session, then report whether the gateway confirms it.
+
+    Saving closes the manual-login session upstream, so the page must not keep polling;
+    the panel also gets an immediate verdict instead of waiting for the 5-minute watchdog.
+    """
     await ctx.upstream_login_call(account_id, "save")
-    return {"ok": True}
+    acc = ctx.query_account(account_id)
+    session = "unknown"
+    blocker = None
+    if acc:
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + 10.0
+        while loop.time() < deadline:
+            snapshot = await asyncio.to_thread(ctx.session_snapshot, acc)
+            session = snapshot["state"]
+            blocker = snapshot.get("blocker")
+            if session == "connected":
+                break
+            await asyncio.sleep(0.7)
+    notes = {
+        "connected": "Gateway confirms the session. Send a test job.",
+        "unverified": (
+            "Cookies are saved but not confirmed yet. Send a test job; if it fails, "
+            "reopen the login page and sign in again."
+        ),
+        "unknown": "Session state unknown. Send a test job to verify.",
+    }
+    return {
+        "ok": True,
+        "session": session,
+        "blocker": blocker,
+        "note": notes.get(session, notes["unknown"]),
+    }

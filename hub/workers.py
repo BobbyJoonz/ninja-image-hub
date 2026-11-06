@@ -110,19 +110,43 @@ def upstream_probe(ctx, acc):
         return False
 
 
-def session_probe(ctx, acc):
+def _parse_metrics(text):
+    """Session state plus the last login blocker, from the gateway's Prometheus output."""
+    state = "unknown"
+    match = re.search(
+        "^gpt_web_gateway_session_valid\\s+([01])(?:\\.0)?\\s*$", text, re.M
+    )
+    if match:
+        state = "connected" if match.group(1) == "1" else "unverified"
+    blocker = None
+    failures = re.findall(
+        r'^gpt_web_gateway_login_failures_total\{blocker="([a-z_]+)"\}\s+([0-9.]+)\s*$',
+        text,
+        re.M,
+    )
+    for name, value in failures:
+        try:
+            if float(value) > 0:
+                blocker = name
+                break
+        except ValueError:
+            continue
+    return {"state": state, "blocker": blocker if state != "connected" else None}
+
+
+def session_snapshot(ctx, acc):
+    """One /metrics call: session validity plus why the gateway considers it invalid."""
     try:
-        r = httpx.get(trust_env=False, url=ctx.upstream(acc) + "/metrics", timeout=1.3)
+        r = httpx.get(trust_env=False, url=ctx.upstream(acc) + "/metrics", timeout=1.6)
         if r.status_code != 200:
-            return "unknown"
-        m = re.search(
-            "^gpt_web_gateway_session_valid\\s+([01])(?:\\.0)?\\s*$", r.text, re.M
-        )
-        if m:
-            return "connected" if m.group(1) == "1" else "unverified"
-        return "unknown"
+            return {"state": "unknown", "blocker": None}
+        return _parse_metrics(r.text)
     except httpx.RequestError:
-        return "unknown"
+        return {"state": "unknown", "blocker": None}
+
+
+def session_probe(ctx, acc):
+    return session_snapshot(ctx, acc)["state"]
 
 
 def account_status(ctx, acc):
@@ -153,9 +177,11 @@ def account_status(ctx, acc):
             "memory_mb": ctx.worker_rss_mb(acc["id"]),
             "restart_required": drift,
         }
+    snapshot = ctx.session_snapshot(acc)
     return {
         "runtime": "online",
-        "session": ctx.session_probe(acc),
+        "session": snapshot["state"],
+        "session_blocker": snapshot.get("blocker"),
         "memory_mb": ctx.worker_rss_mb(acc["id"]),
         "restart_required": drift,
     }
@@ -394,6 +420,11 @@ def display_mode(platform_name=None, which=None, env=None):
     if which("xvfb-run"):
         return "xvfb"
     return "missing"
+
+
+def display_state(ctx):
+    """ctx-bound wrapper for the dashboard (how a headed browser gets a screen)."""
+    return display_mode()
 
 
 def worker_command(platform_name=None, which=None, env=None):

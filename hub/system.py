@@ -8,6 +8,8 @@ def settings(ctx):
         "gateway_installed": ctx.runtime_installed(),
         "gateway_path": str(ctx.VENDOR),
         "data_path": str(ctx.DATA),
+        "display_mode": ctx.display_state(),
+        "session_supported": True,
         "database_type": (
             "PostgreSQL" if ctx.DB_URL.startswith("postgresql") else "SQLite"
         ),
@@ -52,7 +54,7 @@ def health(ctx):
         alive = sum(1 for worker in ctx.processes.values() if worker.poll() is None)
     return {
         "ok": True,
-        "version": "0.6.1",
+        "version": "0.6.2",
         "gateway_installed": ctx.runtime_installed(),
         "accounts": accounts_total,
         "running_workers": alive,

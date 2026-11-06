@@ -544,6 +544,98 @@ def test_icon_sprite_regenerator_reports_success():
     assert "sprite OK" in result.stdout
 
 
+def test_login_page_ships_the_resilient_client_flow(loaded):
+    """The remote login page must survive a slow worker, a busy browser and lease expiry."""
+    client, _ = loaded
+    h = auth(client)
+    acc = client.post(
+        "/api/accounts", json={"name": "LoginFlow", "autostart": False}, headers=h
+    ).json()
+    res = client.get(f"/accounts/{acc['id']}/login")
+    assert res.status_code == 200, res.text
+    page = res.text
+    for marker in (
+        "bootstrap()",              # retry loop while the browser wakes
+        "MAX_POLL_MS",              # stops before the gateway's 10-minute lease
+        "naturalWidth",             # clicks scale by the real screenshot size
+        "Saving the session",       # save state
+        "Retrying automatically",   # busy-job / transient failures
+        "Panel session expired",    # CSRF/session rotation
+        "Open ChatGPT",             # explicit recovery action
+        "x-csrf-token",             # every action carries CSRF
+    ):
+        assert marker in page, marker
+
+
+def test_login_click_accepts_real_viewport_sizes():
+    from hub.schemas import LoginClick
+
+    assert LoginClick(x=1920, y=1080).x == 1920
+    with pytest.raises(Exception):
+        LoginClick(x=-1, y=10)
+    with pytest.raises(Exception):
+        LoginClick(x=10, y=5000)
+
+
+def test_settings_reports_display_mode(loaded):
+    client, _ = loaded
+    h = auth(client)
+    data = client.get("/api/settings", headers=h).json()
+    assert data["display_mode"] in {"desktop", "x11", "xvfb", "missing"}
+
+
+def test_metrics_parser_extracts_login_blockers():
+    from hub.workers import _parse_metrics
+
+    unverified = (
+        '# HELP gpt_web_gateway_session_valid x\n'
+        "gpt_web_gateway_session_valid 0\n"
+        'gpt_web_gateway_login_failures_total{blocker="mfa_required"} 2\n'
+        'gpt_web_gateway_login_failures_total{blocker="cloudflare_challenge"} 0\n'
+    )
+    parsed = _parse_metrics(unverified)
+    assert parsed == {"state": "unverified", "blocker": "mfa_required"}
+    connected = "gpt_web_gateway_session_valid 1\n"
+    assert _parse_metrics(connected) == {"state": "connected", "blocker": None}
+
+
+def test_login_init_reports_busy_browser_instead_of_hanging(loaded, monkeypatch):
+    """A running generation holds the gateway's exclusive lock; init must fail clearly."""
+    import asyncio
+
+    import httpx
+
+    from hub import login as login_module
+
+    client, ctx = loaded
+    h = auth(client)
+    acc = client.post(
+        "/api/accounts", json={"name": "BusyInit", "autostart": False}, headers=h
+    ).json()
+    account = ctx.query_account(acc["id"])
+    monkeypatch.setattr(ctx, "runtime_installed", lambda: True)
+    monkeypatch.setattr(ctx, "process_state", lambda a: "running")
+    monkeypatch.setattr(ctx, "upstream_probe", lambda a: True)
+
+    class TimedOutClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def request(self, *args, **kwargs):
+            raise httpx.ReadTimeout("busy")
+
+    monkeypatch.setattr(login_module.httpx, "AsyncClient", TimedOutClient)
+    with pytest.raises(Exception) as excinfo:
+        asyncio.run(login_module.upstream_login_call(ctx, acc["id"], "init"))
+    assert "busy with a running generation job" in str(excinfo.value)
+
+
 def test_worker_command_gives_every_linux_worker_its_own_xvfb():
     """A headed browser on a server needs a virtual display — one per worker, never shared."""
     from hub.workers import display_mode, worker_command

@@ -71,6 +71,7 @@ def create_app():
         "process_state",
         "upstream_probe",
         "session_probe",
+        "session_snapshot",
         "account_status",
         "ensure_worker_copy",
         "start_worker",
@@ -79,6 +80,7 @@ def create_app():
         "wake_worker_async",
         "reclaim_orphan_worker",
         "touch_account",
+        "display_state",
     ):
         setattr(ctx, name, partial(getattr(workers, name), ctx))
     for name in ("index", "queue_metrics", "analytics"):
@@ -167,7 +169,7 @@ def create_app():
 
     app = FastAPI(
         title="Ninja Image Hub",
-        version="0.6.1",
+        version="0.6.2",
         docs_url=None,
         redoc_url=None,
         lifespan=lifespan,

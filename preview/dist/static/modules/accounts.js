@@ -75,6 +75,32 @@ export function initLoginDialog() {
   });
 }
 
+const DISPLAY_HINTS = {
+  xvfb: "This server renders the browser on a virtual display (Xvfb): there is no window on a desk. Use method 1 or 3.",
+  missing:
+    "No browser display is available on this host. Install xvfb or run the panel with a real DISPLAY before starting workers.",
+  x11: "The worker window is on the server's X display; use VNC to see it, or method 1 / 3.",
+  desktop: "The worker Chrome window is open on this machine.",
+};
+
+function setLoginHints(acc) {
+  const mode =
+    (S.settings && S.settings.display_mode) ||
+    (S.settings && S.settings.worker_policy ? "desktop" : "desktop");
+  $("displayHint").textContent = DISPLAY_HINTS[mode] || DISPLAY_HINTS.desktop;
+  const hint = $("loginSessionHint");
+  if (acc && acc.session_blocker) {
+    hint.hidden = false;
+    hint.textContent =
+      "Gateway reports a login blocker: “" +
+      acc.session_blocker +
+      "”. Fix the credentials/2FA, then reopen the login page.";
+  } else {
+    hint.hidden = true;
+    hint.textContent = "";
+  }
+}
+
 export function openLoginDialog(id) {
   const acc = S.accounts.find((a) => a.id === id);
   if (!acc) return;
@@ -84,6 +110,7 @@ export function openLoginDialog(id) {
   $("autoLoginState").textContent = autoLoginStateText(
     Boolean(acc.auto_login_configured),
   );
+  setLoginHints(acc);
   $("loginDialog").showModal();
   loadAutoLoginState(id);
 }
