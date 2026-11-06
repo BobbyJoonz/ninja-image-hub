@@ -205,6 +205,7 @@ def account_status(ctx, acc):
             "session": "unknown",
             "memory_mb": None,
             "restart_required": False,
+            "display": None,
         }
     state = ctx.process_state(acc)
     if state == "stopped":
@@ -213,6 +214,7 @@ def account_status(ctx, acc):
             "session": "unknown",
             "memory_mb": None,
             "restart_required": False,
+            "display": None,
         }
     launch = ctx.worker_launch_settings.get(acc["id"])
     drift = bool(
@@ -225,6 +227,7 @@ def account_status(ctx, acc):
             "session": "unknown",
             "memory_mb": ctx.worker_rss_mb(acc["id"]),
             "restart_required": drift,
+            "display": None,
         }
     snapshot = ctx.session_snapshot(acc)
     return {

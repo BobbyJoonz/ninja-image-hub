@@ -2605,3 +2605,154 @@ body.booting .stat-value {
     gap: 8px;
   }
 }
+
+
+/* Account cards: compact facts grid */
+.account-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 18px;
+  margin: 10px 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.018);
+}
+.account-fact {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.account-fact dt {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  flex: 0 0 auto;
+}
+.account-fact dd {
+  margin: 0;
+  color: var(--txt);
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.primary-soft {
+  background: rgba(185, 248, 92, 0.12);
+  border-color: rgba(185, 248, 92, 0.45);
+  color: var(--accent);
+}
+
+/* Account details dialog */
+.account-details-modal {
+  width: min(840px, 94vw);
+}
+.account-details-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.detail-section {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  padding: 12px 14px;
+}
+.detail-section h3 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--sub);
+}
+.detail-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 0;
+  border-top: 1px dashed rgba(33, 51, 75, 0.7);
+  font-size: 13px;
+}
+.detail-row:first-of-type {
+  border-top: 0;
+}
+.detail-label {
+  color: var(--muted);
+  flex: 0 0 42%;
+}
+.detail-value {
+  flex: 1 1 auto;
+}
+.detail-value {
+  color: var(--txt);
+  text-align: right;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.detail-value a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.detail-value a:hover {
+  text-decoration: underline;
+}
+.detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+@media (max-width: 720px) {
+  .account-facts {
+    grid-template-columns: 1fr;
+  }
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+/* ---------- Thinking effort badge (requested vs applied tier) ---------- */
+.effort-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 6px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  border: 1px solid #3c556c;
+  background: #16283c;
+  color: #bccfe2;
+  white-space: nowrap;
+}
+.effort-badge .icon {
+  width: 11px;
+  height: 11px;
+}
+.effort-badge.ok {
+  border-color: #4d7a49;
+  background: #1b3427;
+  color: #c8f5a0;
+}
+.effort-badge.warn {
+  border-color: #96603f;
+  background: #3a2a1d;
+  color: #ffd2a8;
+}
+.effort-badge.unknown {
+  border-color: #4a5d74;
+  background: #1a2a3d;
+  color: #a9bdd2;
+}

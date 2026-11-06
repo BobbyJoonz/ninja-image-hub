@@ -67,56 +67,57 @@ export function accountCards(arr, archived = false) {
       : `<div class="empty"><h3>No active accounts yet</h3><p>Add an account to create an isolated browser workspace.</p><button class="btn primary" data-action="add">${uiIcon("plus")} Add account</button></div>`;
   return arr
     .map((a) => {
-      const meta = [
-        (() => {
-          const p = a.plan || null;
-          if (p) {
-            const days =
-              p.days_left == null ? "" : ` · ${p.days_left}d left`;
-            const renew = p.will_renew ? " · renews" : "";
-            const warn = p.is_free
-              ? ' <span class="plan-pending">Not Plus</span>'
-              : p.days_left != null && p.days_left <= 3
-                ? ' <span class="plan-pending">Expiring</span>'
-                : "";
-            return `Plan: <strong>${esc(String(p.label || p.plan || "unknown").toUpperCase())}${days}${renew}</strong>${warn}`;
-          }
-          return `Plan: <strong>${esc((a.plan_label || "unknown").toUpperCase())} · manual</strong>`;
-        })(),
-        `Autostart: <strong>${a.autostart ? "On" : "Off"}</strong>`,
-        `Parallel: <strong>${a.parallel_limit || 1} job(s)</strong>`,
-        `RAM: <strong>${a.memory_mb == null ? "—" : a.memory_mb + " MiB"}</strong>`,
-        `Dispatch: <strong>${a.dispatch_enabled ? "On" : "Paused"}</strong>`,
-        a.restart_required
-          ? '<span class="plan-pending">Restart required</span>'
-          : "",
-        a.auto_login_configured
-          ? '<span class="plan-pending">Auto-login</span>'
-          : "",
-        a.project_url
-          ? '<span class="plan-pending">Project</span>'
-          : "",
-        a.cooldown_until
-          ? `<span>Cooldown: <strong>${esc(a.cooldown_until)}</strong></span>`
-          : "",
-        a.session_blocker
-          ? `<span>Login blocker: <strong>${esc(a.session_blocker)}</strong></span>`
-          : "",
-      ]
-        .filter(Boolean)
-        .map((item) => `<span>${item}</span>`)
-        .join("");
-      const primary = archived
+      const p = a.plan || null;
+      const planText = p
+        ? `${String(p.label || p.plan || "unknown").toUpperCase()}${
+            p.is_free ? " · no subscription" : ""
+          }${p.days_left != null ? ` · ${p.days_left}d left` : ""}`
+        : "— not detected yet";
+      const planTone = p ? (p.is_free ? "warn" : "good") : "muted";
+      const project = projectLabel(a.project_url);
+      const buttons = archived
         ? `<button class="small-action accent" data-action="restore" data-id="${a.id}">${uiIcon("restore")} Restore</button><button class="small-action danger" data-action="purge" data-id="${a.id}">${uiIcon("trash")} Delete forever</button>`
-        : `<button class="small-action" data-action="edit" data-id="${a.id}">${uiIcon("pencil")} Edit</button>${
+        : `<button class="small-action primary-soft" data-action="details" data-id="${a.id}">${uiIcon("logs")} Details</button><button class="small-action" data-action="edit" data-id="${a.id}">${uiIcon("pencil")} Edit</button>${
             a.runtime === "stopped"
               ? `<button class="small-action accent" data-action="start" data-id="${a.id}">${uiIcon("play")} Start</button>`
               : `<button class="small-action" data-action="stop" data-id="${a.id}">${uiIcon("stop")} Stop</button>`
           }<button class="small-action accent" data-action="login" data-id="${a.id}">${uiIcon("login")} Login</button><details class="action-menu"><summary aria-label="More actions for ${esc(a.name)}" title="More actions">${uiIcon("more")}</summary><div class="action-menu-list"><button class="small-action" data-action="${a.dispatch_enabled ? "pause-dispatch" : "resume-dispatch"}" data-id="${a.id}">${a.dispatch_enabled ? uiIcon("pause") + " Pause queue" : uiIcon("play") + " Resume queue"}</button><button class="small-action" data-action="logs" data-id="${a.id}">${uiIcon("logs")} Logs</button><button class="small-action danger" data-action="archive" data-id="${a.id}">${uiIcon("archive")} Archive</button></div></details>`;
-      return `<article class="account-card"><div class="account-top"><div class="account-icon">${uiIcon("account")}</div><div class="identity"><div class="account-name">${esc(a.name)}</div><div class="account-email">${esc(a.email_label || "No email label")}</div></div><div class="account-pill"><span class="pill ${esc(a.runtime)}">● ${esc(a.runtime)}</span><span class="pill ${esc(a.session)}">${esc(a.session)}</span></div></div><div class="account-meta">${meta}</div><div class="account-buttons">${primary}</div></article>`;
+      return `<article class="account-card" data-account="${a.id}">
+        <div class="account-top">
+          <div class="account-icon">${uiIcon("account")}</div>
+          <div class="identity">
+            <div class="account-name">${esc(a.name)}</div>
+            <div class="account-email">${esc(a.email_label || "No email label")}</div>
+          </div>
+          <div class="account-pill"><span class="pill ${esc(a.runtime)}">● ${esc(a.runtime)}</span><span class="pill ${esc(a.session)}">${esc(a.session)}</span></div>
+        </div>
+        <dl class="account-facts">
+          <div class="account-fact"><dt>Plan</dt><dd><span class="chip ${planTone}">${esc(planText)}</span></dd></div>
+          <div class="account-fact"><dt>Parallel</dt><dd>${a.parallel_limit || 1} job(s) · ${a.dispatch_enabled ? "dispatching" : "paused"}</dd></div>
+          <div class="account-fact"><dt>Project</dt><dd>${esc(project)}</dd></div>
+          <div class="account-fact"><dt>Login</dt><dd>${a.auto_login_configured ? "Auto-login saved" : "Manual / remote"}${a.session_blocker ? ` · <span class="chip warn">${esc(a.session_blocker)}</span>` : ""}</dd></div>
+        </dl>
+        <div class="account-buttons">${buttons}</div>
+      </article>`;
     })
     .join("");
 }
+
+function projectLabel(url) {
+  if (!url) return "— (normal chat list)";
+  try {
+    const parts = new URL(url).pathname.split("/").filter(Boolean);
+    const slug = parts[parts.length - 2] || "";
+    const name = slug.replace(/^g-p-[a-z0-9]+-?/i, "").replace(/-/g, " ").trim();
+    if (name) return name;
+    const id = slug.replace(/^g-p-/i, "").slice(0, 8);
+    return id ? `ChatGPT project · ${id}` : "ChatGPT project";
+  } catch {
+    return "ChatGPT project";
+  }
+}
+
+export { projectLabel };
 
 export function statusPill(v) {
   return `<span class="pill ${esc(v)}">${esc(v)}</span>`;
@@ -140,6 +141,40 @@ export function filterJobs(jobs, status = "all", query = "", accountNames = {}) 
       .toLowerCase();
     return haystack.includes(q);
   });
+}
+
+const EFFORT_LABELS = {
+  high: "High",
+  extra_high: "Extra High",
+  medium: "Medium",
+  instant: "Instant",
+  pro: "Pro",
+};
+
+function effortBadge(j) {
+  if (!j.thinking_requested) return "";
+  const want = EFFORT_LABELS[j.thinking_requested] || j.thinking_requested;
+  const got = EFFORT_LABELS[j.thinking_applied] || j.thinking_applied || "unknown";
+  const downgraded =
+    j.thinking_mixed === 1 ||
+    (j.thinking_applied && j.thinking_applied !== j.thinking_requested) ||
+    j.thinking_verified === 0;
+  const verified = j.thinking_verified === 1 && !downgraded;
+  const label = j.thinking_mixed
+    ? `${want} · mixed`
+    : j.thinking_applied && j.thinking_applied !== j.thinking_requested
+      ? `${want} → ${got}`
+      : verified
+        ? `${want} ✓`
+        : `${want} ?`;
+  const detail = `Requested ${want}; applied ${got}; verified ${
+    j.thinking_verified === 1
+      ? "yes"
+      : j.thinking_verified === 0
+        ? "no"
+        : "unknown"
+  }${j.thinking_fallback ? `; fallback ${j.thinking_fallback}` : ""}`;
+  return `<span class="effort-badge ${downgraded ? "warn" : verified ? "ok" : "unknown"}" title="${esc(detail)}" aria-label="${esc(detail)}">${uiIcon("sparkles")} ${esc(label)}</span>`;
 }
 
 export function renderJobs() {
@@ -173,7 +208,7 @@ export function renderJobs() {
                   : ""
               }</span>`
             : "";
-          return `<tr><td data-label="JOB / PROMPT"><div class="job-prompt" title="${esc(j.prompt)}">${esc(trunc(j.prompt, 90))}</div><div class="job-id">${esc(j.id.slice(0, 8))}</div></td><td data-label="ACCOUNT">${esc(map[j.account_id] || "Deleted account")}</td><td data-label="STATUS">${statusPill(j.status)}<div class="job-id">${j.image_count || 0}/${j.n || 1} images</div>${resolution}</td><td data-label="CREATED">${esc(new Date(j.created_at).toLocaleString())}</td><td data-label="OUTPUT">${j.image_url ? `<a href="${j.image_url}" target="_blank" rel="noopener">${uiIcon("external")} View ${j.image_count || 1} image(s)</a>` : esc(trunc(j.error || "—", 60))}</td><td data-label="ACTION">${action}</td></tr>`;
+          return `<tr><td data-label="JOB / PROMPT"><div class="job-prompt" title="${esc(j.prompt)}">${esc(trunc(j.prompt, 90))}</div><div class="job-id">${esc(j.id.slice(0, 8))}</div></td><td data-label="ACCOUNT">${esc(map[j.account_id] || "Deleted account")}</td><td data-label="STATUS">${statusPill(j.status)}<div class="job-id">${j.image_count || 0}/${j.n || 1} images</div>${resolution}${effortBadge(j)}</td><td data-label="CREATED">${esc(new Date(j.created_at).toLocaleString())}</td><td data-label="OUTPUT">${j.image_url ? `<a href="${j.image_url}" target="_blank" rel="noopener">${uiIcon("external")} View ${j.image_count || 1} image(s)</a>` : esc(trunc(j.error || "—", 60))}</td><td data-label="ACTION">${action}</td></tr>`;
         })
         .join("")
     : `<tr><td colspan="6" class="jobs-empty">${
@@ -221,6 +256,7 @@ export function renderSettings() {
     ["Preview retention", s.preview_retention_days + " days"],
     ["Export retention", s.export_retention_hours + " hours"],
     ["Worker log limit", s.worker_log_max_mb + " MB"],
+    ["Image effort", (s.thinking_effort_label || s.thinking_effort || "High") + (s.effort_below_requested_24h ? " · " + s.effort_below_requested_24h + " fallback(s) in 24h" : "")],
   ];
   $("settingsList").innerHTML = rows
     .map(
@@ -345,7 +381,7 @@ export function renderOperations() {
   const diskFree = S.settings.disk_free_mb;
   const diskLow = Boolean(S.settings.disk_low);
   $("opsCapacity").innerHTML =
-    `<div><span>Running workers</span><b>${compact(S.control.active_workers)} / ${compact(c.max_running_accounts)}</b></div><div><span>Active requests</span><b>${compact(S.queue.running)} / ${compact(c.global_max_inflight)}</b></div><div><span>Waiting jobs</span><b>${compact(S.queue.queued)} / ${compact(c.max_pending_jobs)}</b></div><div><span>Batch limit</span><b>${compact(c.max_batch_images)}</b></div><div><span>Tab limit</span><b>${compact(c.gateway_max_tabs)} / worker</b></div><div><span>Disk free</span><b class="${diskLow ? "warn" : ""}">${diskFree == null ? "unknown" : compact(diskFree) + " MB"}</b></div>`;
+    `<div><span>Running workers</span><b>${compact(S.control.active_workers)} / ${compact(c.max_running_accounts)}</b></div><div><span>Active requests</span><b>${compact(S.queue.running)} / ${compact(c.global_max_inflight)}</b></div><div><span>Waiting jobs</span><b>${compact(S.queue.queued)} / ${compact(c.max_pending_jobs)}</b></div><div><span>Batch limit</span><b>${compact(c.max_batch_images)}</b></div><div><span>Tab limit</span><b>${compact(c.gateway_max_tabs)} / worker</b></div><div><span>Disk free</span><b class="${diskLow ? "warn" : ""}">${diskFree == null ? "unknown" : compact(diskFree) + " MB"}</b></div><div><span>Image effort</span><b>${esc(S.settings.thinking_effort_label || S.settings.thinking_effort || "High")}</b></div>${S.settings.effort_below_requested_24h ? `<div><span>Effort fallbacks (24h)</span><b class="warn">${compact(S.settings.effort_below_requested_24h)}</b></div>` : ""}`;
   const diskBlocked = Boolean(S.settings.disk_low);
   const statusText = paused
     ? "Dispatch paused"

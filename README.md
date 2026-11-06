@@ -10,7 +10,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Node.js](https://img.shields.io/badge/node-22%2B-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![SQLite](https://img.shields.io/badge/SQLite-WAL-003B57?logo=sqlite&logoColor=white)](https://www.sqlite.org/wal.html)
-[![Tests](https://img.shields.io/badge/tests-104%20passed%20%C2%B7%201%20skipped-2ea043)](#verification)
+[![Tests](https://img.shields.io/badge/tests-110%20passed%20%C2%B7%201%20skipped-2ea043)](#verification)
 [![Accounts](https://img.shields.io/badge/accounts-1%20to%2016-8957e5)](#multi-account-model)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-linux%20%7C%20windows-6e7681)](#quick-start)
@@ -59,6 +59,14 @@ operator verified without ever retrying. `scripts/backup.py` takes a WAL-safe sn
 (originals + sessions + `.env`) and re-hashes it; `scripts/watch.py` alerts on unresolved
 jobs, low disk and stalls; `scripts/capacity_report.py` measures real throughput, queue
 wait and generation time instead of estimating it.
+**Verified reasoning effort.** Image generation always asks ChatGPT for the configured
+thinking tier (High by default) instead of inheriting whatever the chat window showed
+last. The gateway returns what the UI actually selected, and each job stores
+`thinking_requested`, `thinking_applied`, `thinking_verified`, `thinking_fallback` and
+`thinking_mixed`; the Jobs view shows `High ✓`, `High → Medium`, `High · mixed` or
+`High ?`. A downgrade is surfaced and counted in `/api/health`
+(`effort_below_requested_24h`) so the watchdog can alert — it is never retried, never
+silently hidden and never turns a saved image into a failure.
 
 ### Why this exists
 
@@ -103,6 +111,14 @@ A script that fires ten prompts in parallel "works" until the first `429`, the f
 <td width="50%">
 <a href="docs/images/login-interaction.png"><img src="docs/images/login-interaction.png" alt="Remote login interaction" /></a>
 <br/><sub><b>Remote login</b> — click the streamed browser, type directly, the green ring shows each click</sub>
+</td>
+</tr>
+<tr>
+<td width="50%">
+<a href="docs/images/account-details.png"><img src="docs/images/account-details.png" alt="Account details dialog" /></a>
+<br/><sub><b>Account details</b> — plan, renewal, session, project and runtime in one categorized panel</sub>
+</td>
+<td width="50%">
 </td>
 </tr>
 </table>
@@ -343,6 +359,7 @@ All of these are **live** unless marked *restart*. Every change requires admin s
 | `max_pending_jobs` | `1000` | 1–10000 | immediately | Backpressure ceiling; existing queued work is preserved |
 | `provider_cooldown_minutes` | `30` | 1–240 | next tick | Minimum cooldown after a rate limit; a longer `Retry-After` always wins |
 | `idle_worker_shutdown_minutes` | `20` | 0–1440 | next tick | Stop an idle browser; `0` = always-on |
+| `thinking_effort` | `high` | `high` / `extra_high` / `medium` / `instant` / `pro` | next job | Reasoning tier requested for **every** image; the applied tier is verified and recorded per job |
 | `min_free_memory_mb` | `600` | 0–65536 | next start | Refuse to start a browser when free RAM is below this; `0` disables the guard |
 | `dispatch_paused` | `0` | 0/1 | next tick | Pause **new** dispatch only; running jobs finish, queued jobs are kept |
 
@@ -358,7 +375,7 @@ All of these are **live** unless marked *restart*. Every change requires admin s
 | `COOKIE_SECURE` | optional | `true` when the panel is behind HTTPS |
 | `DATA_DIR` | optional | Data root (default `./data`) |
 | `DATABASE_URL` | optional | SQLite by default; PostgreSQL is *not* validated |
-| `GLOBAL_MAX_INFLIGHT`, `GATEWAY_MAX_TABS`, `MAX_PENDING_JOBS`, `MAX_BATCH_IMAGES`, `PROVIDER_COOLDOWN_MINUTES`, `MAX_RUNNING_ACCOUNTS`, `IDLE_WORKER_SHUTDOWN_MINUTES`, `MIN_FREE_MEMORY_MB`, `PREVIEW_RETENTION_DAYS`, `EXPORT_RETENTION_HOURS`, `WORKER_LOG_MAX_MB`, `MIN_FREE_DISK_MB` | optional | Seed values for a **fresh** database only; afterwards the DB/panel wins |
+| `GLOBAL_MAX_INFLIGHT`, `GATEWAY_MAX_TABS`, `MAX_PENDING_JOBS`, `MAX_BATCH_IMAGES`, `PROVIDER_COOLDOWN_MINUTES`, `MAX_RUNNING_ACCOUNTS`, `IDLE_WORKER_SHUTDOWN_MINUTES`, `MIN_FREE_MEMORY_MB`, `PREVIEW_RETENTION_DAYS`, `EXPORT_RETENTION_HOURS`, `WORKER_LOG_MAX_MB`, `MIN_FREE_DISK_MB`, `THINKING_EFFORT` | optional | Seed values for a **fresh** database only; afterwards the DB/panel wins |
 
 ### C. CLI scripts
 
@@ -495,7 +512,7 @@ Guardrails:
 ## Verification
 
 ```bash
-python -m pytest -q                     # 104 passed, 1 skipped  (~96 s)
+python -m pytest -q                     # 110 passed, 1 skipped  (~96 s)
 node --test tests/frontend.test.mjs     # 6 passed
 node --check frontend/app.js            # + all modules + preview/demo.js
 python scripts/doctor.py                # exit 0 = ready

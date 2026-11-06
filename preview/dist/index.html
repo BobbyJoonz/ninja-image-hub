@@ -524,6 +524,22 @@
                         a full disk. 0 disables the guard</small
                       ></label
                     >
+                    <label
+                      >Thinking effort (images)<select name="thinking_effort">
+                        <option value="high" selected>High — recommended</option>
+                        <option value="extra_high">
+                          Extra High (if your plan offers it)
+                        </option>
+                        <option value="medium">Medium</option>
+                        <option value="instant">Instant</option>
+                      </select>
+                      <small
+                        >Requested for every image generation. The gateway
+                        verifies what the ChatGPT UI actually applied; a
+                        downgrade is shown on the job and counted, never
+                        retried or hidden</small
+                      ></label
+                    >
                     <div class="control-actions">
                       <p id="controlDirty" class="fine-print">
                         Choose safe values and save. Existing requests are not
@@ -951,6 +967,16 @@ GET /v1/jobs/&lt;job UUID&gt;</pre>
           </button>
         </div>
       </form>
+    </dialog>
+    <dialog id="accountDetailsDialog" class="modal account-details-modal">
+      <div class="modal-top">
+        <span class="modal-tag">ACCOUNT DETAILS</span>
+        <button type="button" class="close-btn" id="closeAccountDetails" aria-label="Close">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-x"></use></svg>
+        </button>
+      </div>
+      <h2 id="accountDetailsTitle">Account</h2>
+      <div class="account-details-body" id="accountDetailsBody"></div>
     </dialog>
     <dialog id="loginDialog" class="modal login-modal">
       <div class="modal-top">

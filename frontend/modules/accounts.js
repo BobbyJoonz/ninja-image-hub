@@ -1,6 +1,7 @@
 import { S } from "./state.js";
 import { $, esc, toast } from "./dom.js";
 import { api } from "./api.js";
+import { projectLabel } from "./views.js";
 import { refreshData, switchView } from "./controller.js";
 let loginAccountId = null;
 
@@ -116,6 +117,121 @@ const DISPLAY_HINTS = {
 };
 
 
+
+let detailsAccountId = null;
+
+function fmtDay(value) {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleDateString();
+}
+
+function detailRow(label, valueHtml) {
+  return `<div class="detail-row"><span class="detail-label">${label}</span><span class="detail-value">${valueHtml}</span></div>`;
+}
+
+function planChip(plan, planLabel, checkedAt) {
+  if (!plan) {
+    const when = checkedAt ? ` · checked ${fmtDay(checkedAt)}` : "";
+    return `<span class="chip muted">not detected yet</span><span class="fine-print">${when}</span>`;
+  }
+  const tone = plan.is_free ? "warn" : "good";
+  const bits = [String(plan.label || plan.plan || "unknown").toUpperCase()];
+  if (plan.is_free) bits.push("no active subscription");
+  if (plan.days_left != null) bits.push(`${plan.days_left} day(s) left`);
+  return `<span class="chip ${tone}">${esc(bits.join(" · "))}</span>`;
+}
+
+function renewalText(plan) {
+  if (!plan) return "—";
+  if (plan.ends_at) return `${fmtDay(plan.ends_at)} (ends)`;
+  if (plan.renews_at) return `${fmtDay(plan.renews_at)} (next renewal)`;
+  return plan.active ? "unknown" : "no renewal — free plan";
+}
+
+function projectLink(url) {
+  if (!url) return '<span class="fine-print">normal chat list</span>';
+  const label = esc(projectLabel(url));
+  return `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+}
+
+export function openAccountDetails(id) {
+  const a = S.accounts.find((x) => x.id === id);
+  if (!a) return;
+  detailsAccountId = id;
+  $("accountDetailsTitle").textContent = a.name;
+  const plan = a.plan || null;
+  $("accountDetailsBody").innerHTML = `
+    <div class="detail-grid">
+      <section class="detail-section">
+        <h3>ChatGPT account</h3>
+        ${detailRow("Plan", planChip(plan, a.plan_label, a.plan_checked_at))}
+        ${detailRow("Renewal / expiry", esc(renewalText(plan)))}
+        ${detailRow("Plan checked", a.plan_checked_at ? esc(fmtDay(a.plan_checked_at)) : "never")}
+        ${detailRow("Session", `<span class="pill ${esc(a.session)}">${esc(a.session)}</span>${a.session_blocker ? ` <span class="chip warn">${esc(a.session_blocker)}</span>` : ""}`)}
+        ${detailRow("Browser session", plan && plan.session_expires ? esc(fmtDay(plan.session_expires)) : "—")}
+        ${detailRow("Project", projectLink(a.project_url))}
+        ${detailRow("Credentials", a.auto_login_configured ? "auto-login saved" : "manual / remote login")}
+      </section>
+      <section class="detail-section">
+        <h3>Runtime</h3>
+        ${detailRow("Status", `<span class="pill ${esc(a.runtime)}">● ${esc(a.runtime)}</span>`)}
+        ${detailRow("Memory", a.memory_mb == null ? "—" : esc(`${a.memory_mb} MiB`))}
+        ${detailRow("Parallel jobs", esc(String(a.parallel_limit || 1)))}
+        ${detailRow("Dispatch", a.dispatch_enabled ? "on" : "paused")}
+        ${detailRow("Cooldown", a.cooldown_until ? esc(a.cooldown_until) : "—")}
+        ${detailRow("Autostart", a.autostart ? "on" : "off")}
+        ${detailRow("Display", a.display ? `<code>${esc(a.display)}</code>` : "—")}
+        ${detailRow("Restart required", a.restart_required ? '<span class="chip warn">yes</span>' : "no")}
+      </section>
+    </div>
+    <div class="detail-actions">
+      <button type="button" class="btn secondary btn-small" data-detail-action="refresh-plan">Refresh plan</button>
+      <button type="button" class="btn secondary btn-small" data-detail-action="login">Login</button>
+      <button type="button" class="btn secondary btn-small" data-detail-action="edit">Edit</button>
+      <button type="button" class="btn secondary btn-small" data-detail-action="logs">Logs</button>
+      <button type="button" class="btn secondary btn-small" data-detail-action="toggle">${a.runtime === "stopped" ? "Start" : "Stop"}</button>
+    </div>`;
+  $("accountDetailsDialog").showModal();
+}
+
+async function detailAction(action) {
+  if (!detailsAccountId) return;
+  const acc = S.accounts.find((x) => x.id === detailsAccountId);
+  try {
+    if (action === "refresh-plan") {
+      await api(`/api/accounts/${detailsAccountId}/plan`);
+      toast("Plan refreshed from ChatGPT.");
+      await refreshData(true);
+      openAccountDetails(detailsAccountId);
+      return;
+    }
+    $("accountDetailsDialog").close();
+    if (action === "login") return openLoginDialog(detailsAccountId);
+    if (action === "edit") return openEdit(detailsAccountId);
+    if (action === "logs") return onAccountAction("logs", detailsAccountId);
+    if (action === "toggle") {
+      const verb = acc && acc.runtime === "stopped" ? "start" : "stop";
+      await api(`/api/accounts/${detailsAccountId}/${verb}`, { method: "POST" });
+      toast(verb === "start" ? "Worker starting." : "Worker stopped.");
+      await refreshData(true);
+      return;
+    }
+  } catch (err) {
+    toast(err.message, true);
+  }
+}
+
+export function initAccountDetails() {
+  $("closeAccountDetails").addEventListener("click", () =>
+    $("accountDetailsDialog").close(),
+  );
+  $("accountDetailsBody").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-detail-action]");
+    if (button) detailAction(button.dataset.detailAction);
+  });
+}
+
 const PLAN_TONE = (plan) => {
   if (!plan) return "";
   if (plan.is_free) return "warn";
@@ -220,6 +336,10 @@ export async function onAccountAction(action, id) {
     }
     if (action === "edit") {
       openEdit(id);
+      return;
+    }
+    if (action === "details") {
+      openAccountDetails(id);
       return;
     }
     if (action === "login") {

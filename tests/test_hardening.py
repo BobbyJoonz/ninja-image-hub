@@ -947,6 +947,31 @@ def test_plan_endpoint_caches_detected_plan(loaded, monkeypatch):
     )
 
 
+
+def test_account_payload_exposes_detail_fields(loaded):
+    """The account detail dialog needs these fields in one list call."""
+    client, _ = loaded
+    h = auth(client)
+    client.post("/api/accounts", json={"name": "Detail", "autostart": False}, headers=h)
+    row = client.get("/api/accounts").json()[0]
+    required = {
+        "runtime",
+        "session",
+        "memory_mb",
+        "restart_required",
+        "parallel_limit",
+        "dispatch_enabled",
+        "auto_login_configured",
+        "project_url",
+        "plan",
+        "plan_label",
+        "plan_checked_at",
+        "display",
+    }
+    assert required <= set(row), required - set(row)
+    assert row["plan"] is None and row["plan_label"] == "unknown"
+
+
 def test_worker_command_gives_every_linux_worker_its_own_xvfb():
     """A headed browser on a server needs a virtual display — one per worker, never shared."""
     from hub.workers import display_mode, worker_command

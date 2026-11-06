@@ -13,12 +13,14 @@ import { renderAnalytics, renderJobs } from "./modules/views.js";
 import {
   onAccountAction,
   openAdd,
+  initAccountDetails,
   initLoginDialog,
   initResolveDialog,
 } from "./modules/accounts.js";
 
 initLoginDialog();
 initResolveDialog();
+initAccountDetails();
 
 $("loginForm").addEventListener("submit", async (e) => {
   e.preventDefault();
