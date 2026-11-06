@@ -95,6 +95,16 @@ A script that fires ten prompts in parallel "works" until the first `429`, the f
 <br/><sub><b>Operations</b> — every runtime limit is a live, validated setting with an audit trail</sub>
 </td>
 </tr>
+<tr>
+<td width="50%">
+<a href="docs/images/accounts-add.png"><img src="docs/images/accounts-add.png" alt="Add account dialog with existing accounts" /></a>
+<br/><sub><b>Add account</b> — existing accounts with runtime/session/plan/project, detected automatically</sub>
+</td>
+<td width="50%">
+<a href="docs/images/login-interaction.png"><img src="docs/images/login-interaction.png" alt="Remote login interaction" /></a>
+<br/><sub><b>Remote login</b> — click the streamed browser, type directly, the green ring shows each click</sub>
+</td>
+</tr>
 </table>
 
 <p align="center"><img src="docs/images/overview-mobile.png" alt="Mobile layout" width="300" /><br/>
@@ -525,7 +535,7 @@ Credentials from the iframe form are stored only in `data/accounts/<id>/auto-log
 - **No SLA.** ChatGPT UI changes, Cloudflare challenges, session expiry, 2FA and account-level limits are outside this software's control. Ten accounts do not create provider quota.
 - **PostgreSQL and multiple replicas are not supported.** Single process, single SQLite file (WAL).
 - `Best` / `Balanced` / `Draft` are **prompt guidance only**, not upstream API quality parameters.
-- Account plan labels are manual and unverified.
+- Plans are read from ChatGPT's own account payload; a manual label can never override it. The cached plan refreshes every 6 h or on demand, so it may briefly lag behind the provider.
 - **No video generation.**
 
 ---

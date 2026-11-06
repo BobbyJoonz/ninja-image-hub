@@ -184,8 +184,6 @@ def save_detected_plan(ctx, account_id, plan):
 
 
 def add_account(ctx, body: AccountBody):
-    if body.plan_label not in {"unknown", "free", "plus", "pro", "other"}:
-        raise HTTPException(422, "Invalid manual plan label.")
     aid = str(uuid.uuid4())
     acc = {
         "id": aid,
@@ -195,8 +193,9 @@ def add_account(ctx, body: AccountBody):
         "api_secret": secrets.token_urlsafe(38),
         "autostart": int(body.autostart),
         "archived_at": None,
-        "plan_label": body.plan_label,
-        "plan_checked_at": ctx.now() if body.plan_label != "unknown" else None,
+        # Plan is detected from ChatGPT's own payload, never typed by the operator.
+        "plan_label": "unknown",
+        "plan_checked_at": None,
         "created_at": ctx.now(),
         "parallel_limit": body.parallel_limit,
         "cooldown_until": None,
@@ -221,8 +220,6 @@ def edit_account(ctx, account_id: str, body: AccountUpdate):
         raise HTTPException(409, "Restore the account before editing.")
     if not body.name.strip():
         raise HTTPException(422, "Account name required.")
-    if body.plan_label not in {"unknown", "free", "plus", "pro", "other"}:
-        raise HTTPException(422, "Invalid manual plan label.")
     with ctx.engine.begin() as c:
         c.execute(
             update(ctx.accounts)
@@ -231,8 +228,6 @@ def edit_account(ctx, account_id: str, body: AccountUpdate):
                 name=body.name.strip(),
                 email_label=body.email_label.strip(),
                 autostart=int(body.autostart),
-                plan_label=body.plan_label,
-                plan_checked_at=ctx.now() if body.plan_label != "unknown" else None,
                 parallel_limit=body.parallel_limit,
                 project_url=_clean_project_url(body.project_url),
             )

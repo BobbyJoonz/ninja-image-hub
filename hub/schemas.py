@@ -11,7 +11,6 @@ class AccountBody(BaseModel):
     parallel_limit: int = Field(default=2, ge=1, le=5)
     name: str = Field(min_length=1, max_length=80)
     email_label: str = Field(default="", max_length=160)
-    plan_label: str = "unknown"
     autostart: bool = False
     project_url: str = Field(default="", max_length=500)
 
@@ -20,7 +19,6 @@ class AccountUpdate(BaseModel):
     parallel_limit: int = Field(default=2, ge=1, le=5)
     name: str = Field(min_length=1, max_length=80)
     email_label: str = Field(default="", max_length=160)
-    plan_label: str = "unknown"
     autostart: bool = False
     project_url: str = Field(default="", max_length=500)
 

@@ -1,5 +1,5 @@
 import { S } from "./state.js";
-import { $, toast } from "./dom.js";
+import { $, esc, toast } from "./dom.js";
 import { api } from "./api.js";
 import { refreshData, switchView } from "./controller.js";
 let loginAccountId = null;
@@ -114,6 +114,61 @@ const DISPLAY_HINTS = {
   x11: "The worker window is on the server's X display; use VNC to see it, or method 1 / 3.",
   desktop: "The worker Chrome window is open on this machine.",
 };
+
+
+const PLAN_TONE = (plan) => {
+  if (!plan) return "";
+  if (plan.is_free) return "warn";
+  if (plan.days_left != null && plan.days_left <= 3) return "warn";
+  return "good";
+};
+
+function statusChips(acc) {
+  const chips = [];
+  const runtime = acc.runtime || "stopped";
+  const runtimeTone =
+    runtime === "online" ? "good" : runtime === "starting" ? "warn" : "";
+  chips.push(
+    `<span class="chip ${runtimeTone}"><span class="dot ${runtimeTone}"></span>${esc(runtime)}</span>`,
+  );
+  if (acc.session && acc.session !== "unknown")
+    chips.push(
+      `<span class="chip ${acc.session === "connected" ? "good" : "warn"}">${esc(acc.session)}</span>`,
+    );
+  const plan = acc.plan;
+  if (plan) {
+    const days = plan.days_left != null ? ` · ${plan.days_left}d` : "";
+    chips.push(
+      `<span class="chip ${PLAN_TONE(plan)}">${esc(String(plan.label || plan.plan).toUpperCase())}${days}</span>`,
+    );
+  }
+  if (acc.project_url) chips.push('<span class="chip muted">project</span>');
+  if (acc.auto_login_configured) chips.push('<span class="chip muted">auto-login</span>');
+  if (acc.dispatch_enabled === false)
+    chips.push('<span class="chip muted">dispatch paused</span>');
+  return chips.join("");
+}
+
+function renderExistingAccounts() {
+  const list = $("existingAccounts");
+  if (!list) return;
+  const accounts = (S.accounts || []).filter((a) => !a.archived_at);
+  $("existingCount").textContent = String(accounts.length);
+  if (!accounts.length) {
+    list.innerHTML =
+      '<p class="existing-empty">No accounts yet — this will be the first one.</p>';
+    return;
+  }
+  list.innerHTML = accounts
+    .map(
+      (a) => `
+      <div class="existing-row${a.plan && a.plan.is_free ? " is-free" : ""}">
+        <span class="existing-name">${esc(a.name)}</span>
+        <span class="existing-chips">${statusChips(a)}</span>
+      </div>`,
+    )
+    .join("");
+}
 
 function planSummary(plan) {
   if (!plan) return "Detected plan: —";
@@ -292,10 +347,12 @@ export function openAdd() {
   S.editingAccountId = null;
   $("addForm").reset();
   $("accAutostart").checked = false;
-  $("accPlan").value = "unknown";
   $("accParallel").value = "2";
   $("accProject").value = "";
   $("detectedPlan").textContent = "Detected plan: — (available after the first refresh)";
+  $("detectedPlanRow").hidden = true;
+  $("existingAccountsSection").hidden = false;
+  renderExistingAccounts();
   $("accountDialogTitle").textContent = "Add an account";
   $("saveAccountBtn").textContent = "Create account";
   $("addDialog").showModal();
@@ -309,10 +366,11 @@ export function openEdit(id) {
   $("addForm").reset();
   $("accName").value = a.name;
   $("accEmail").value = a.email_label || "";
-  $("accPlan").value = a.plan_label || "unknown";
   $("accParallel").value = String(a.parallel_limit || 2);
   $("accProject").value = a.project_url || "";
   $("detectedPlan").textContent = planSummary(a.plan);
+  $("detectedPlanRow").hidden = false;
+  $("existingAccountsSection").hidden = true;
   $("accAutostart").checked = Boolean(a.autostart);
   $("accountDialogTitle").textContent = "Edit account";
   $("saveAccountBtn").textContent = "Save changes";

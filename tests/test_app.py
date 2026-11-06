@@ -347,9 +347,9 @@ def test_account_lifecycle_edit_archive_restore_and_purge(loaded):
         == 200
     )
     updated = client.get("/api/accounts").json()[0]
-    assert updated["plan_label"] == "plus" and updated["plan_checked_at"]
+    # A manual label is ignored: only ChatGPT's own payload may set the plan.
+    assert updated["plan_label"] == "unknown" and updated["plan_checked_at"] is None
     assert updated["email_label"] == "edited@example.test"
-    # Manual plan label is not a provider-verified subscription proof.
     assert (
         client.post("/api/accounts/" + aid + "/archive", headers=headers).status_code
         == 200

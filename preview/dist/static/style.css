@@ -2469,3 +2469,139 @@ body.booting .stat-value {
 .job-resolution strong {
   color: #cfdded;
 }
+
+
+/* Add-account dialog: existing accounts overview + detected plan row */
+.existing-accounts {
+  margin: 14px 0 18px;
+  padding: 14px 14px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(185, 248, 92, 0.05), transparent 60%),
+    var(--panel);
+}
+.existing-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.existing-head h3 {
+  margin: 0;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sub);
+}
+.existing-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 220px;
+  overflow: auto;
+}
+.existing-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 11px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.025);
+}
+.existing-row.is-free {
+  border-color: rgba(234, 185, 116, 0.35);
+}
+.existing-name {
+  font-weight: 600;
+  color: var(--txt);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.existing-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+.existing-empty {
+  margin: 4px 2px 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  color: var(--sub);
+  white-space: nowrap;
+}
+.chip.good {
+  border-color: rgba(185, 248, 92, 0.45);
+  color: var(--accent);
+}
+.chip.warn {
+  border-color: rgba(234, 185, 116, 0.45);
+  color: var(--warning);
+}
+.chip.muted {
+  color: var(--muted);
+}
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.dot.good {
+  background: var(--accent);
+}
+.dot.warn {
+  background: var(--warning);
+}
+.detected-plan-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 10px 0 4px;
+  padding: 9px 12px;
+  border: 1px dashed var(--line);
+  border-radius: 11px;
+}
+.btn-small {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+.existing-accounts[hidden],
+.detected-plan-row[hidden] {
+  display: none;
+}
+
+@media (max-width: 560px) {
+  .existing-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  .existing-name {
+    white-space: normal;
+    max-width: 100%;
+  }
+  .existing-chips {
+    justify-content: flex-start;
+  }
+  .detected-plan-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+}

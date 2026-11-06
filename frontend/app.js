@@ -87,7 +87,6 @@ $("addForm").addEventListener("submit", async (e) => {
     name: $("accName").value,
     email_label: $("accEmail").value,
     autostart: $("accAutostart").checked,
-    plan_label: $("accPlan").value,
     parallel_limit: Number($("accParallel").value),
     project_url: $("accProject").value.trim(),
   };

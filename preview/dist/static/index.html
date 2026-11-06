@@ -886,6 +886,17 @@ GET /v1/jobs/&lt;job UUID&gt;</pre>
           Create an isolated worker. Then click <strong>Login</strong> to
           connect your own ChatGPT account manually.
         </p>
+        <section class="existing-accounts" id="existingAccountsSection" hidden>
+          <div class="existing-head">
+            <h3>Existing accounts</h3>
+            <span class="badge-soft" id="existingCount">0</span>
+          </div>
+          <div class="existing-list" id="existingAccounts"></div>
+          <p class="fine-print">
+            Status, plan, session and project are detected automatically from each
+            signed-in ChatGPT account — nothing to type manually.
+          </p>
+        </section>
         <label for="accName">Display name</label
         ><input
           id="accName"
@@ -909,19 +920,13 @@ GET /v1/jobs/&lt;job UUID&gt;</pre>
           that project instead of the normal chat list. Project links are
           per-account; apply with Stop → Start.
         </p>
-        <label for="accPlan"
-          >Subscription label (manual — the real plan is read from ChatGPT)</label
-        ><select id="accPlan">
-          <option value="unknown">Unknown</option>
-          <option value="plus">Plus (manually checked)</option>
-          <option value="pro">Pro (manually checked)</option>
-          <option value="free">Free (manually checked)</option>
-          <option value="other">Other (manually checked)</option></select
-        >
-        <p class="fine-print" id="detectedPlan">Detected plan: —</p>
-        <button type="button" class="btn secondary" id="refreshPlan">
-          Refresh plan from ChatGPT
-        </button><label for="accParallel">Concurrent jobs for this account</label
+        <div class="detected-plan-row" id="detectedPlanRow" hidden>
+          <span class="fine-print" id="detectedPlan">Detected plan: —</span>
+          <button type="button" class="btn secondary btn-small" id="refreshPlan">
+            Refresh plan
+          </button>
+        </div>
+        <label for="accParallel">Concurrent jobs for this account</label
         ><select id="accParallel">
           <option value="1">1 (safest)</option>
           <option value="2" selected>2 (balanced)</option>
