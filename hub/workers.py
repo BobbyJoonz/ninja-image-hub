@@ -1,4 +1,5 @@
 import os
+import pathlib
 import re
 import shutil
 import socket
@@ -149,6 +150,23 @@ def session_probe(ctx, acc):
     return session_snapshot(ctx, acc)["state"]
 
 
+def worker_display(ctx, acc):
+    """The X display the worker browser runs on (Linux), for the operator's VNC access.
+
+    Returns None on Windows/macOS or when the process is not running. x11vnc against this
+    display is the only way to complete providers that need a real browser (Google SSO,
+    CAPTCHA) on a headless server.
+    """
+    with ctx.proc_guard:
+        process = ctx.processes.get(acc["id"])
+    if not process or process.poll() is not None:
+        return None
+    try:
+        return psutil.Process(process.pid).environ().get("DISPLAY") or None
+    except psutil.Error:
+        return None
+
+
 def account_status(ctx, acc):
     if acc.get("archived_at"):
         return {
@@ -184,7 +202,47 @@ def account_status(ctx, acc):
         "session_blocker": snapshot.get("blocker"),
         "memory_mb": ctx.worker_rss_mb(acc["id"]),
         "restart_required": drift,
+        "display": worker_display(ctx, acc),
     }
+
+
+POPUP_FOLLOW_MARKER = "ninja:popup-follow"
+
+
+def _patch_popup_follow(worker):
+    """Let the remote login page follow OAuth popups (Google/Apple/phone).
+
+    Upstream keeps one stored page and screenshots/clicks it. Clicking
+    "Continue with Google" opens a popup in the same browser context, so the remote
+    page stayed on the old tab and the user could not finish signing in. This small,
+    guarded patch makes getLoginPage() prefer the newest open page. When upstream
+    changes, the pattern simply does not match and the worker is left untouched.
+    """
+    path = pathlib.Path(worker) / "src" / "routes" / "login.js"
+    if not path.is_file():
+        return False
+    content = path.read_text(encoding="utf-8")
+    if POPUP_FOLLOW_MARKER in content:
+        return False
+    old = (
+        "async function getLoginPage() {\n"
+        "  if (loginPage && !loginPage.isClosed()) return loginPage;\n"
+    )
+    if content.count(old) != 1:
+        return False
+    new = (
+        "async function getLoginPage() {\n"
+        "  // ninja:popup-follow — follow the newest open page so OAuth popups work.\n"
+        "  try {\n"
+        "    const context = await getContext();\n"
+        "    const open = context.pages().filter((p) => p && !p.isClosed());\n"
+        "    const newest = open[open.length - 1];\n"
+        "    if (newest && newest !== loginPage) loginPage = newest;\n"
+        "  } catch (err) {}\n"
+        "  if (loginPage && !loginPage.isClosed()) return loginPage;\n"
+    )
+    path.write_text(content.replace(old, new, 1), encoding="utf-8")
+    return True
 
 
 def ensure_worker_copy(ctx, acc):
@@ -213,6 +271,8 @@ def ensure_worker_copy(ctx, acc):
         )
     (worker / "auth").mkdir(exist_ok=True)
     (worker / "public" / "images").mkdir(parents=True, exist_ok=True)
+    # Apply the OAuth popup guard on every start, so existing workspaces get it too.
+    _patch_popup_follow(worker)
     return worker
 
 

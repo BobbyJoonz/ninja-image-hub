@@ -47,6 +47,7 @@ PAGE = r"""<!doctype html>
   </header>
   <p class="notice">Only sign in to an account you own. This page drives the worker browser; the panel does not store these credentials. Do not expose this page beyond your own machine or SSH tunnel.</p>
   <p class="notice">__DISPLAY_NOTE__</p>
+  <p class="notice">Signing in with <b>Google</b>, <b>Apple</b> or <b>phone</b> opens a popup: this page follows the newest window automatically. If the image does not change within ~10 seconds, use the visible Chrome window (desktop) or VNC (server) for that provider.</p>
   <div class="toolbar">
     <button class="primary" id="openBtn" onclick="reopen()">Open ChatGPT</button>
     <button onclick="sendKey('Tab')">Tab</button>
@@ -56,7 +57,7 @@ PAGE = r"""<!doctype html>
     <button onclick="manualRefresh()">Refresh</button>
     <button onclick="sendKey('PageUp')">PgUp</button>
     <button onclick="sendKey('PageDown')">PgDn</button>
-    <button id="directBtn" onclick="toggleDirect()">Type directly: off</button>
+    <button id="directBtn" onclick="toggleDirect()" style="background:var(--accent);color:#0a1220">Type directly: on</button>
   </div>
   <div class="toolbar">
     <input id="type" type="password" placeholder="Type into the focused browser field" autocomplete="off">
@@ -145,7 +146,7 @@ async function bootstrap() {
   setState('Opening the login session…');
   for (let attempt = 0; attempt < 8; attempt += 1) {
     const result = await openSession();
-    if (result === 'ok') { await refreshOnce(); startPolling(); return; }
+    if (result === 'ok') { await refreshOnce(); startPolling(); if (directMode) screenImg.focus(); return; }
     if (result === 'fatal') return;
     await new Promise((r) => setTimeout(r, Math.min(1500 * (attempt + 1), 5000)));
   }
@@ -170,7 +171,7 @@ async function refreshOnce() {
     if (old) setTimeout(() => URL.revokeObjectURL(old), 2000);
     lastOk = Date.now();
     failures = 0;
-    if (!saved && Date.now() - lastActionAt > 6000) setState('Live. Click a field in the image, then type below and press Enter.', 'good');
+    if (!saved && Date.now() - lastActionAt > 6000) setState('Live. Click a field in the image, then just type (or paste) — keys go to the browser.', 'good');
   } catch (err) {
     if (err.status === 403) { sessionExpired(); return; }
     failures += 1;
@@ -271,7 +272,7 @@ const marker = document.getElementById('marker');
 const typeInput = document.getElementById('type');
 const directBtn = document.getElementById('directBtn');
 const stage = document.getElementById('stage');
-let directMode = false;
+let directMode = true;
 let markerTimer = null;
 let scrollCooldown = 0;
 let keyBuffer = '';
@@ -341,10 +342,20 @@ function toggleDirect() {
   directBtn.style.background = directMode ? 'var(--accent)' : '';
   directBtn.style.color = directMode ? '#0a1220' : '#fff';
   setState(directMode
-    ? 'Direct typing is ON — click the browser field, then type anywhere. Enter/Tab/Backspace work.'
+    ? 'Direct typing is ON — click the browser field, then type or paste anywhere. Enter/Tab/Backspace work.'
     : 'Direct typing is OFF — type in the box and press Enter.');
   if (directMode) screenImg.focus();
 }
+
+document.addEventListener('paste', (event) => {
+  if (!directMode) return;
+  const text = (event.clipboardData || window.clipboardData).getData('text');
+  if (!text) return;
+  event.preventDefault();
+  lastActionAt = Date.now();
+  setState('Pasted ' + text.length + ' character(s) into the browser.');
+  sendAction('type', { text });
+});
 
 document.addEventListener('keydown', (event) => {
   if (!directMode) return;

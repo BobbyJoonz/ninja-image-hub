@@ -169,7 +169,7 @@ def create_app():
 
     app = FastAPI(
         title="Ninja Image Hub",
-        version="0.6.3",
+        version="0.6.4",
         docs_url=None,
         redoc_url=None,
         lifespan=lifespan,

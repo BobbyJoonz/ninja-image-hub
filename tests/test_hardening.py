@@ -602,7 +602,9 @@ def test_login_page_ships_the_resilient_client_flow(loaded):
         'id="marker"',              # visible click feedback (there is no live cursor)
         "toggleDirect",             # direct keyboard capture
         "wheelScroll",              # wheel -> PageUp/PageDown
-        "Type directly: off",       # discoverable toggle
+        "Type directly: on",        # direct typing is the default now
+        "addEventListener('paste'",  # paste a password from a manager
+        "follows the newest window",  # OAuth popup guidance
     ):
         assert marker in page, marker
 
@@ -674,6 +676,63 @@ def test_login_init_reports_busy_browser_instead_of_hanging(loaded, monkeypatch)
     with pytest.raises(Exception) as excinfo:
         asyncio.run(login_module.upstream_login_call(ctx, acc["id"], "init"))
     assert "busy with a running generation job" in str(excinfo.value)
+
+
+
+def test_popup_follow_patch_is_applied_once_and_skips_unknown_upstream(tmp_path):
+    """Google/Apple sign-in opens a popup; the worker's login route must follow it."""
+    from hub.workers import _patch_popup_follow
+
+    worker = tmp_path / "gateway"
+    routes = worker / "src" / "routes"
+    routes.mkdir(parents=True)
+    upstream = (
+        "async function getLoginPage() {\n"
+        "  if (loginPage && !loginPage.isClosed()) return loginPage;\n"
+        "  const ctx = await getContext();\n"
+        "}\n"
+    )
+    target = routes / "login.js"
+    target.write_text(upstream, encoding="utf-8")
+    assert _patch_popup_follow(worker) is True
+    patched = target.read_text(encoding="utf-8")
+    assert "ninja:popup-follow" in patched
+    assert "context.pages()" in patched
+    assert _patch_popup_follow(worker) is False  # idempotent
+    assert patched.count("ninja:popup-follow") == 1
+
+    changed = routes / "login-changed.js"
+    changed.write_text("function getLoginPage() { return null; }\n", encoding="utf-8")
+    routes.joinpath("login.js").write_text("// unrelated upstream\n", encoding="utf-8")
+    assert _patch_popup_follow(worker) is False
+    assert routes.joinpath("login.js").read_text(encoding="utf-8") == "// unrelated upstream\n"
+
+
+def test_account_status_exposes_worker_display_for_vnc(loaded, monkeypatch):
+    import psutil
+
+    from hub.workers import worker_display
+
+    client, ctx = loaded
+    h = auth(client)
+    acc = client.post("/api/accounts", json={"name": "Display", "autostart": False}, headers=h).json()
+
+    class FakeProc:
+        def poll(self):
+            return None
+
+        pid = 4242
+
+    ctx.processes[acc["id"]] = FakeProc()
+    monkeypatch.setattr(
+        psutil, "Process", lambda pid: type("P", (), {"environ": lambda self: {"DISPLAY": ":99"}})()
+    )
+    assert worker_display(ctx, ctx.query_account(acc["id"])) == ":99"
+    monkeypatch.setattr(
+        psutil, "Process", lambda pid: type("P", (), {"environ": lambda self: {}})()
+    )
+    assert worker_display(ctx, ctx.query_account(acc["id"])) is None
+    ctx.processes.pop(acc["id"], None)  # do not let the fake process reach shutdown
 
 
 def test_worker_command_gives_every_linux_worker_its_own_xvfb():
