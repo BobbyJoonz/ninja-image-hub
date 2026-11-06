@@ -395,6 +395,24 @@ def test_capacity_report_helpers():
     assert summary["counts"]["failed"] == 1
 
 
+# ------------------------------------------------------------------ release seal
+def test_release_seal_hashing_is_platform_stable(tmp_path):
+    """A Linux clone and a Windows checkout must verify the same text hashes."""
+    seal = _load_script("seal_manifest")
+    crlf = tmp_path / "note.md"
+    lf = tmp_path / "note.md"
+    crlf.write_bytes(b"line one\r\nline two\r\n")
+    lf.write_bytes(b"line one\nline two\n")
+    assert seal.digest(crlf) == seal.digest(lf)
+    binary_crlf = tmp_path / "image.png"
+    binary_lf = tmp_path / "image2.png"
+    binary_crlf.write_bytes(b"\x89PNG\r\n\x1a\nA")
+    binary_lf.write_bytes(b"\x89PNG\n\x1a\nA")
+    assert seal.digest(binary_crlf) != seal.digest(binary_lf)
+    assert seal.is_text(Path("frontend/app.js")) is True
+    assert seal.is_text(Path("docs/images/overview.png")) is False
+
+
 # ------------------------------------------------------------------ UI contract
 def test_phase4_ui_contract():
     html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")

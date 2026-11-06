@@ -362,6 +362,7 @@ All of these are **live** unless marked *restart*. Every change requires admin s
 | `python scripts/capacity_report.py` | `--submit --yes`, `--accounts` | Read-only capacity snapshot by default; with `--submit` measures real wall time, queue wait, generation p50/p95 and sustained images/hour against a real panel |
 | `python scripts/serve_preview.py` | `--host`, `--port` | Serves `preview/dist` with correct MIME types (the sample-data preview) |
 | `python scripts/audit_gallery.py` | — | **Read-only** report of missing/unindexed files; never deletes anything |
+| `python scripts/seal_manifest.py` | `--check` | Regenerates or verifies `MANIFEST_SHA256.json`; text is hashed after CRLF→LF normalisation so a Linux clone and a Windows checkout agree |
 | `python scripts/benchmark_transfer.py` | — | Synthetic memory benchmark of the storage stage |
 | `sudo bash deploy/install_linux.sh` | `--upgrade` | Install/upgrade on Linux: packages, Node 22, Chrome, Xvfb, venv, `.env`, systemd |
 | `start_windows.bat` / `start_linux.sh` | — | Create `.env` if missing, then serve `127.0.0.1:8081 --workers 1` |
