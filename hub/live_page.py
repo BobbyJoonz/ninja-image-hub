@@ -45,7 +45,7 @@ PAGE = r"""<!doctype html>
   <div class="toolbar">
     <button class="primary" id="openChatgpt">Open ChatGPT</button>
     <button id="saveSession">Save Session</button>
-    <button id="modeBtn">Mode: screencast</button>
+    <button id="modeBtn">Mode: poll</button>
     <button id="qualityBtn">Quality: fast</button>
     <button id="classicView">Classic view</button>
     <button id="closeView">Close</button>
@@ -65,7 +65,7 @@ PAGE = r"""<!doctype html>
 const ACCOUNT = __ACCOUNT__;
 const CSRF = __CSRF__;
 const CLASSIC_URL = __CLASSIC__;
-let mode = localStorage.getItem('ninja-live-mode') || 'screencast';
+let mode = localStorage.getItem('ninja-live-mode') || 'poll';
 let quality = localStorage.getItem('ninja-live-quality') || 'fast';
 document.getElementById('qualityBtn').textContent = 'Quality: ' + quality;
 const ripple = document.getElementById('ripple');
@@ -191,6 +191,37 @@ function indexOfBytes(buffer, needle, from) {
   return -1;
 }
 
+let blackSince = 0;
+let lastBlackCheck = 0;
+
+function checkBlackFrame() {
+  const now = performance.now();
+  if (now - lastBlackCheck < 1000) return;
+  lastBlackCheck = now;
+  try {
+    const sample = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+    let dark = 0;
+    let total = 0;
+    for (let i = 0; i < sample.length; i += 4000) {
+      total++;
+      if (sample[i] < 18 && sample[i + 1] < 18 && sample[i + 2] < 18) dark++;
+    }
+    const isBlack = total > 0 && dark / total > 0.97;
+    if (isBlack) {
+      if (!blackSince) blackSince = now;
+      if (now - blackSince > 2500 && mode === 'screencast') {
+        mode = 'poll';
+        localStorage.setItem('ninja-live-mode', mode);
+        document.getElementById('modeBtn').textContent = 'Mode: ' + mode;
+        setStatus('Screencast returned black frames (window occluded) — switched to poll.', 'good');
+        startStream();
+      }
+    } else {
+      blackSince = 0;
+    }
+  } catch (err) {}
+}
+
 async function drawFrame(bytes) {
   try {
     const blob = new Blob([bytes], { type: 'image/jpeg' });
@@ -212,6 +243,8 @@ async function drawFrame(bytes) {
     lastFrameAt = now;
   } catch (err) {}
 }
+
+setInterval(checkBlackFrame, 1200);
 
 // ---- local cursor + input forwarding
 function point(event) {
@@ -299,6 +332,9 @@ canvas.addEventListener('pointerdown', (event) => {
   const p = point(event);
   if (!p) return;
   canvas.setPointerCapture?.(event.pointerId);
+  // Always send a fresh move before the press: the last move may have been throttled
+  // and a stale coordinate is the most common reason a click 'does nothing'.
+  enqueue({ type: 'mouse', action: 'move', x: p.x, y: p.y });
   enqueue({ type: 'mouse', action: 'down', x: p.x, y: p.y, button: event.button === 2 ? 'right' : 'left', buttons: 1 });
   canvas.focus();
 });
@@ -318,6 +354,18 @@ canvas.addEventListener('wheel', (event) => {
   if (!p) return;
   enqueue({ type: 'mouse', action: 'wheel', x: p.x, y: p.y, deltaX: event.deltaX, deltaY: event.deltaY });
 }, { passive: false });
+
+canvas.addEventListener('dblclick', (event) => {
+  const p = point(event);
+  if (!p) return;
+  showRipple(event);
+  for (let i = 0; i < 2; i++) {
+    enqueue({ type: 'mouse', action: 'move', x: p.x, y: p.y });
+    enqueue({ type: 'mouse', action: 'down', x: p.x, y: p.y, button: 'left', buttons: 1 });
+    enqueue({ type: 'mouse', action: 'up', x: p.x, y: p.y, button: 'left', buttons: 0 });
+  }
+  setStatus('Double-click at ' + p.x + ',' + p.y);
+});
 
 canvas.addEventListener('contextmenu', (event) => event.preventDefault());
 
@@ -396,6 +444,7 @@ document.getElementById('closeView').addEventListener('click', () => window.clos
 
 (async function boot() {
   try {
+    await postJson('/focus', {});
     await getJson('/init');
     startStream();
   } catch (err) {

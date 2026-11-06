@@ -421,3 +421,13 @@ async def live_cursor(ctx, account_id: str, x: int = 0, y: int = 0):
         return response.json()
     except ValueError:
         raise HTTPException(502, "Invalid cursor payload.")
+
+
+async def live_focus(ctx, account_id: str):
+    """Make sure the worker window is not minimized before streaming/clicking."""
+    acc = ctx.query_account(account_id)
+    if not acc:
+        raise HTTPException(404, "Account not found.")
+    ctx.touch_account(account_id)
+    restored = bool(ctx.focus_worker_window(acc)) if hasattr(ctx, "focus_worker_window") else False
+    return {"ok": True, "restored": restored, "platform": "win32" if restored else "other"}

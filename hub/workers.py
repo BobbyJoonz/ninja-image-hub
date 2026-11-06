@@ -579,6 +579,7 @@ router.get('/login/live', async (req, res) => {
     };
 
     if (mode === 'screencast') {
+      try { await page.bringToFront(); } catch (e) {}
       // Keep the compositor busy with a 2px pulse: screencast only emits on repaint.
       await page.evaluate(() => {
         if (document.getElementById('__ninja_live_pulse__')) return;
@@ -696,6 +697,7 @@ router.post('/login/input', async (req, res) => {
   try {
     await enterManualLogin({ acquire: false });
     const page = await getLoginPage();
+    try { await page.bringToFront(); } catch (e) {}
     client = await page.context().newCDPSession(page);
     const events = Array.isArray(req.body && req.body.events) ? req.body.events.slice(0, 200) : [];
     for (const ev of events) {
@@ -1220,6 +1222,53 @@ def stop_worker(ctx, account_id):
                 psutil.wait_procs(children, timeout=3)
         if h:
             h.close()
+
+
+def focus_worker_window(ctx, acc):
+    """Bring the worker's Chrome window to the foreground (Windows only).
+
+    A minimized/occluded window makes captureScreenshot slow and CDP screencast
+    return black frames. Linux/Xvfb has no such state, so this is a no-op there.
+    """
+    if sys.platform != "win32":
+        return False
+    import ctypes
+    import ctypes.wintypes as wt
+
+    with ctx.proc_guard:
+        process = ctx.processes.get(acc["id"])
+    if not process or process.poll() is not None:
+        return False
+    try:
+        pids = {process.pid}
+        pids.update(child.pid for child in psutil.Process(process.pid).children(recursive=True))
+    except psutil.Error:
+        return False
+    try:
+        user32 = ctypes.windll.user32
+    except AttributeError:
+        return False
+    found = []
+
+    @ctypes.WINFUNCTYPE(wt.BOOL, wt.HWND, wt.LPARAM)
+    def visit(hwnd, _lparam):
+        pid = wt.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        if pid.value in pids and user32.IsWindowVisible(hwnd):
+            found.append(hwnd)
+        return True
+
+    user32.EnumWindows(visit, 0)
+    restored = False
+    for hwnd in found:
+        try:
+            user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+            user32.SetForegroundWindow(hwnd)
+            user32.BringWindowToTop(hwnd)
+            restored = True
+        except Exception:
+            continue
+    return restored
 
 
 def _identity_after_start(ctx, acc):

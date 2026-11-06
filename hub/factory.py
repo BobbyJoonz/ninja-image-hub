@@ -83,6 +83,7 @@ def create_app():
         "reclaim_orphan_worker",
         "touch_account",
         "display_state",
+        "focus_worker_window",
     ):
         setattr(ctx, name, partial(getattr(workers, name), ctx))
     for name in ("index", "queue_metrics", "analytics"):
@@ -115,6 +116,7 @@ def create_app():
         "live_page",
         "live_stream",
         "live_input",
+        "live_focus",
         "live_cursor",
         "upstream_login_call",
         "remote_init",
@@ -294,6 +296,10 @@ def create_app():
         "/api/accounts/{account_id}/remote/cursor",
         dependencies=[Depends(ctx.require_admin)],
     )(ctx.live_cursor)
+    app.post(
+        "/api/accounts/{account_id}/remote/focus",
+        dependencies=[Depends(ctx.csrf_admin)],
+    )(ctx.live_focus)
     app.get(
         "/api/accounts/{account_id}/remote/url",
         dependencies=[Depends(ctx.require_admin)],
