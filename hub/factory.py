@@ -73,6 +73,7 @@ def create_app():
         "upstream_probe",
         "session_probe",
         "session_snapshot",
+        "plan_snapshot",
         "account_status",
         "ensure_worker_copy",
         "start_worker",
@@ -91,6 +92,7 @@ def create_app():
         "list_accounts",
         "add_account",
         "edit_account",
+        "save_detected_plan",
         "start_account",
         "stop_account",
         "ensure_no_running_jobs",
@@ -118,6 +120,8 @@ def create_app():
         "remote_save",
         "remote_url",
         "remote_pages",
+        "remote_plan_probe",
+        "remote_plan",
     ):
         setattr(ctx, name, partial(getattr(login, name), ctx))
     for name in (
@@ -274,6 +278,14 @@ def create_app():
         "/api/accounts/{account_id}/remote/pages",
         dependencies=[Depends(ctx.require_admin)],
     )(ctx.remote_pages)
+    app.get(
+        "/api/accounts/{account_id}/remote/plan",
+        dependencies=[Depends(ctx.require_admin)],
+    )(ctx.remote_plan_probe)
+    app.get(
+        "/api/accounts/{account_id}/plan",
+        dependencies=[Depends(ctx.require_admin)],
+    )(ctx.remote_plan)
     app.post(
         "/api/accounts/{account_id}/remote/click",
         dependencies=[Depends(ctx.csrf_admin)],

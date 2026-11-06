@@ -1,4 +1,6 @@
 import os
+
+from . import plans
 import shutil
 
 from sqlalchemy import func, select
@@ -72,6 +74,9 @@ def health(ctx):
         accounts_total = conn.execute(
             select(func.count()).select_from(ctx.accounts)
         ).scalar_one()
+        plan_rows = conn.execute(
+            select(ctx.accounts.c.plan_label, ctx.accounts.c.plan_meta)
+        ).all()
     with ctx.proc_guard:
         alive = sum(1 for worker in ctx.processes.values() if worker.poll() is None)
     disk_free = _disk_free_mb(ctx)
@@ -89,6 +94,16 @@ def health(ctx):
         "dispatch_paused": bool(ctx.setting("dispatch_paused")),
         "disk_free_mb": disk_free,
         "disk_low": disk_low,
+        "accounts_free_plan": sum(
+            1 for label, _ in plan_rows if str(label or "").lower() in ("free", "guest")
+        ),
+        "accounts_plan_expiring": sum(
+            1
+            for _, meta in plan_rows
+            if (summary := plans.summary({"plan_meta": meta}))
+            and summary.get("days_left") is not None
+            and summary["days_left"] <= 3
+        ),
         "unresolved_unknown": ctx.unresolved_unknown(),
         "queued": counts.get("queued", 0),
         "running": counts.get("running", 0),

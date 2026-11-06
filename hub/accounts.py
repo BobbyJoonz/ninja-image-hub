@@ -6,6 +6,7 @@ import shutil
 import threading
 import uuid
 from fastapi import HTTPException
+from sqlalchemy import update
 from sqlalchemy import func, select, update
 from .schemas import AccountBody, AccountUpdate, AutoLoginBody, ConfirmRemove
 
@@ -164,6 +165,22 @@ def _clean_project_url(value):
             "(open the project in ChatGPT and copy the address bar).",
         )
     return url
+
+
+def save_detected_plan(ctx, account_id, plan):
+    """Persist the plan ChatGPT reports for this account (no secrets, no cookies)."""
+    payload = json.dumps(plan or {}, ensure_ascii=False, sort_keys=True)[:1900]
+    checked = (plan or {}).get("checked_at")
+    with ctx.engine.begin() as conn:
+        conn.execute(
+            update(ctx.accounts)
+            .where(ctx.accounts.c.id == account_id)
+            .values(
+                plan_label=(plan or {}).get("plan") or "unknown",
+                plan_checked_at=checked,
+                plan_meta=payload,
+            )
+        )
 
 
 def add_account(ctx, body: AccountBody):

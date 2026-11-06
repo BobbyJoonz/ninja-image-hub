@@ -910,14 +910,18 @@ GET /v1/jobs/&lt;job UUID&gt;</pre>
           per-account; apply with Stop → Start.
         </p>
         <label for="accPlan"
-          >Subscription label (manual — not verified automatically)</label
+          >Subscription label (manual — the real plan is read from ChatGPT)</label
         ><select id="accPlan">
           <option value="unknown">Unknown</option>
           <option value="plus">Plus (manually checked)</option>
           <option value="pro">Pro (manually checked)</option>
           <option value="free">Free (manually checked)</option>
           <option value="other">Other (manually checked)</option></select
-        ><label for="accParallel">Concurrent jobs for this account</label
+        >
+        <p class="fine-print" id="detectedPlan">Detected plan: —</p>
+        <button type="button" class="btn secondary" id="refreshPlan">
+          Refresh plan from ChatGPT
+        </button><label for="accParallel">Concurrent jobs for this account</label
         ><select id="accParallel">
           <option value="1">1 (safest)</option>
           <option value="2" selected>2 (balanced)</option>

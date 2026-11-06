@@ -8,6 +8,7 @@ import sys
 import threading
 import time
 import httpx
+from . import plans
 from fastapi import HTTPException
 from sqlalchemy import select
 import psutil
@@ -15,7 +16,7 @@ import psutil
 
 def safe_account(ctx, acc):
     account = {
-        k: acc[k]
+        k: acc.get(k)
         for k in [
             "id",
             "name",
@@ -29,8 +30,10 @@ def safe_account(ctx, acc):
             "cooldown_until",
             "dispatch_enabled",
             "project_url",
+            "plan_meta",
         ]
     } | ctx.account_status(acc)
+    account["plan"] = plans.summary(acc)
     account["auto_login_configured"] = (
         ctx.DATA / "accounts" / acc["id"] / "auto-login.json"
     ).is_file()
@@ -149,6 +152,33 @@ def session_snapshot(ctx, acc):
 
 def session_probe(ctx, acc):
     return session_snapshot(ctx, acc)["state"]
+
+
+def plan_snapshot(ctx, acc):
+    """Read the plan from ChatGPT through the worker (sync; run off the event loop)."""
+    try:
+        response = httpx.get(
+            trust_env=False,
+            url=ctx.upstream(acc) + "/login/plan",
+            headers={"Authorization": f"Bearer {acc['api_secret']}"},
+            timeout=20,
+        )
+    except httpx.RequestError:
+        return None
+    if response.status_code != 200:
+        return None
+    try:
+        raw = response.json()
+    except ValueError:
+        return None
+    return plans.parse_entitlement(raw)
+
+
+def plan_snapshot_for_account(ctx, account_id):
+    acc = ctx.query_account(account_id)
+    if not acc:
+        return None
+    return plan_snapshot(ctx, acc)
 
 
 def worker_display(ctx, acc):
@@ -339,6 +369,92 @@ def _patch_login_diagnostics(worker):
     return True
 
 
+PLAN_PROBE_MARKER = "ninja:plan-probe-v2"
+
+PLAN_PROBE_JS = r"""// ninja:plan-probe-v2 — read the signed-in account's plan from ChatGPT's own web API.
+// Runs on any open chatgpt.com page (or a temporary one) and never acquires the
+// manual-login lease, so it is safe during/next to generation jobs. Returns only
+// billing-relevant fields: never tokens, cookies or chat content.
+router.get('/login/plan', async (req, res) => {
+  let temp = null;
+  try {
+    const context = await getContext();
+    let page = null;
+    for (const candidate of context.pages()) {
+      if (candidate && !candidate.isClosed() && (candidate.url() || '').startsWith('https://chatgpt.com')) {
+        page = candidate;
+        break;
+      }
+    }
+    if (!page) {
+      temp = await context.newPage();
+      page = temp;
+      await page.goto('https://chatgpt.com', { waitUntil: 'domcontentloaded', timeout: 45000 });
+    }
+    const data = await page.evaluate(async () => {
+      const out = {};
+      const grab = async (key, url) => {
+        try {
+          const r = await fetch(url, { credentials: 'include', headers: { accept: 'application/json' } });
+          let body = null;
+          if (r.status === 200) {
+            try { body = await r.json(); } catch (e) { body = null; }
+          }
+          out[key] = { status: r.status, body };
+        } catch (e) {
+          out[key] = { error: String((e && e.message) || e) };
+        }
+      };
+      await grab('me', '/backend-api/me');
+      await grab('check', '/backend-api/accounts/check/v4-2023-04-27');
+      await grab('subscriptions', '/backend-api/subscriptions');
+      try {
+        const r = await fetch('/api/auth/session', { credentials: 'include' });
+        const s = r.status === 200 ? await r.json() : null;
+        out.session = {
+          status: r.status,
+          expires: s && s.expires ? s.expires : null,
+          user: s && s.user ? { id: s.user.id || null, email: s.user.email || null } : null,
+        };
+      } catch (e) {
+        out.session = { error: String((e && e.message) || e) };
+      }
+      return out;
+    });
+    res.json(data);
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  } finally {
+    if (temp && !temp.isClosed()) {
+      try { await temp.close(); } catch (e) {}
+    }
+  }
+});
+
+module.exports = router;"""
+
+_OLD_PLAN_ROUTE = re.compile(
+    r"// ninja:plan-probe[\s\S]*?router\.get\('/login/plan'[\s\S]*?\n\}\);\n"
+)
+
+
+def _patch_plan_probe(worker):
+    """Add (or upgrade) the read-only plan probe route; never acquires the login lease."""
+    path = pathlib.Path(worker) / "src" / "routes" / "login.js"
+    if not path.is_file():
+        return False
+    content = path.read_text(encoding="utf-8")
+    if PLAN_PROBE_MARKER in content:
+        return False
+    anchor = "module.exports = router;"
+    if content.count(anchor) != 1:
+        return False
+    if "ninja:plan-probe" in content:
+        content = _OLD_PLAN_ROUTE.sub("", content, count=1)
+    path.write_text(content.replace(anchor, PLAN_PROBE_JS, 1), encoding="utf-8")
+    return True
+
+
 def ensure_worker_copy(ctx, acc):
     if not ctx.runtime_installed():
         raise RuntimeError(
@@ -369,6 +485,7 @@ def ensure_worker_copy(ctx, acc):
     _patch_popup_follow(worker)
     _patch_project_url(worker)
     _patch_login_diagnostics(worker)
+    _patch_plan_probe(worker)
     return worker
 
 

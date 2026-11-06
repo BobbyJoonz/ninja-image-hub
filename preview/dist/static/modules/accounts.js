@@ -58,6 +58,22 @@ export function initLoginDialog() {
       button.disabled = false;
     }
   });
+  $("refreshPlan").addEventListener("click", async () => {
+    if (!loginAccountId && !S.editingAccountId) return;
+    const accountId = S.editingAccountId || loginAccountId;
+    const button = $("refreshPlan");
+    button.disabled = true;
+    try {
+      const plan = await api(`/api/accounts/${accountId}/plan`);
+      $("detectedPlan").textContent = planSummary(plan);
+      toast(`Plan: ${plan.label}${plan.days_left != null ? ` · ${plan.days_left} day(s) left` : ""}`);
+      await refreshData(true);
+    } catch (err) {
+      toast(err.message, true);
+    } finally {
+      button.disabled = false;
+    }
+  });
   $("restartForAutoLogin").addEventListener("click", async () => {
     if (!loginAccountId) return;
     const button = $("restartForAutoLogin");
@@ -98,6 +114,16 @@ const DISPLAY_HINTS = {
   x11: "The worker window is on the server's X display; use VNC to see it, or method 1 / 3.",
   desktop: "The worker Chrome window is open on this machine.",
 };
+
+function planSummary(plan) {
+  if (!plan) return "Detected plan: —";
+  const parts = [`Detected plan: ${plan.label || plan.plan || "unknown"}`];
+  if (plan.active === false) parts.push("no active subscription");
+  if (plan.days_left != null) parts.push(`${plan.days_left} day(s) left`);
+  if (plan.will_renew) parts.push("will renew");
+  if (plan.session_expires) parts.push(`browser session until ${plan.session_expires.slice(0, 10)}`);
+  return parts.join(" · ");
+}
 
 function setLoginHints(acc) {
   const mode =
@@ -269,6 +295,7 @@ export function openAdd() {
   $("accPlan").value = "unknown";
   $("accParallel").value = "2";
   $("accProject").value = "";
+  $("detectedPlan").textContent = "Detected plan: — (available after the first refresh)";
   $("accountDialogTitle").textContent = "Add an account";
   $("saveAccountBtn").textContent = "Create account";
   $("addDialog").showModal();
@@ -285,6 +312,7 @@ export function openEdit(id) {
   $("accPlan").value = a.plan_label || "unknown";
   $("accParallel").value = String(a.parallel_limit || 2);
   $("accProject").value = a.project_url || "";
+  $("detectedPlan").textContent = planSummary(a.plan);
   $("accAutostart").checked = Boolean(a.autostart);
   $("accountDialogTitle").textContent = "Edit account";
   $("saveAccountBtn").textContent = "Save changes";

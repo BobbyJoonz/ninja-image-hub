@@ -836,6 +836,117 @@ def test_login_diagnostics_patch_is_idempotent_and_upgrades_old_copies(tmp_path)
     assert _patch_login_diagnostics(worker) is False
 
 
+
+def _check_payload(plan_type, display, subscription, active, renews=None, expires=None, cancels=None, will_renew=False, paid=False):
+    return {
+        "check": {
+            "body": {
+                "accounts": {
+                    "default": {
+                        "account": {
+                            "plan_type": plan_type,
+                            "plan_display_name": display,
+                            "has_previously_paid_subscription": paid,
+                        },
+                        "entitlement": {
+                            "subscription_plan": subscription,
+                            "has_active_subscription": active,
+                            "renews_at": renews,
+                            "expires_at": expires,
+                            "cancels_at": cancels,
+                        },
+                        "last_active_subscription": {"will_renew": will_renew},
+                    }
+                }
+            }
+        },
+        "session": {"expires": "2027-01-01T00:00:00.000Z"},
+    }
+
+
+def test_plan_parser_reads_plus_renewal_dates():
+    from hub.plans import parse_entitlement
+
+    far = "2030-01-20T12:00:00.000Z"
+    plan = parse_entitlement(
+        _check_payload("plus", "Plus", "chatgptplusplan", True, renews=far, will_renew=True, paid=True)
+    )
+    assert plan["plan"] == "plus"
+    assert plan["label"] == "Plus"
+    assert plan["active"] is True
+    assert plan["is_free"] is False
+    from datetime import datetime
+
+    assert datetime.fromisoformat(plan["renews_at"]) == datetime.fromisoformat(far.replace("Z", "+00:00"))
+    assert plan["ends_at"] is None          # renews_at is not an end date
+    assert plan["days_left"] is None
+    assert plan["will_renew"] is True
+    assert plan["previously_paid"] is True
+    assert plan["source"] == "chatgpt-account-entitlement"
+
+
+def test_plan_parser_detects_free_guest_and_cancelled_plus():
+    from hub.plans import parse_entitlement
+
+    free = parse_entitlement(_check_payload("guest", "Free", "chatgptguestplan", False))
+    assert free["plan"] == "free"
+    assert free["is_free"] is True
+    assert free["expires_at"] is None and free["ends_at"] is None
+
+    cancelled = parse_entitlement(
+        _check_payload("plus", "Plus", "chatgptplusplan", True, cancels="2030-02-01T00:00:00.000Z", will_renew=False)
+    )
+    assert cancelled["plan"] == "plus"
+    from datetime import datetime
+
+    assert datetime.fromisoformat(cancelled["cancels_at"]) == datetime.fromisoformat(
+        "2030-02-01T00:00:00+00:00"
+    )
+    from datetime import datetime as _dt
+
+    assert _dt.fromisoformat(cancelled["ends_at"]) == _dt.fromisoformat(
+        "2030-02-01T00:00:00+00:00"
+    )
+    assert cancelled["days_left"] is not None and cancelled["days_left"] > 0
+
+
+def test_plan_parser_survives_malformed_payloads():
+    from hub.plans import parse_entitlement, summary
+
+    assert parse_entitlement({})["plan"] == "unknown"
+    assert parse_entitlement({"check": {"body": {}}})["is_free"] is True
+    assert summary({"plan_meta": "not-json"}) is None
+    assert summary({"plan_meta": ""}) is None
+
+
+def test_plan_endpoint_caches_detected_plan(loaded, monkeypatch):
+    client, ctx = loaded
+    h = auth(client)
+    acc = client.post(
+        "/api/accounts", json={"name": "Planner", "autostart": False}, headers=h
+    ).json()
+    payload = _check_payload(
+        "plus", "Plus", "chatgptplusplan", True, renews="2030-01-20T12:00:00.000Z", will_renew=True
+    )
+    from hub.plans import parse_entitlement
+
+    monkeypatch.setattr(
+        ctx, "plan_snapshot", lambda account: parse_entitlement(payload), raising=False
+    )
+    res = client.get(f"/api/accounts/{acc['id']}/plan", headers=h)
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["plan"] == "plus" and body["days_left"] is None
+    account = next(a for a in client.get("/api/accounts").json() if a["id"] == acc["id"])
+    assert account["plan_label"] == "plus"
+    assert account["plan"]["label"] == "Plus"
+    from datetime import datetime
+
+    assert datetime.fromisoformat(account["plan"]["renews_at"]) == datetime.fromisoformat(
+        "2030-01-20T12:00:00+00:00"
+    )
+
+
 def test_worker_command_gives_every_linux_worker_its_own_xvfb():
     """A headed browser on a server needs a virtual display — one per worker, never shared."""
     from hub.workers import display_mode, worker_command

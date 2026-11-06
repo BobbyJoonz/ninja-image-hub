@@ -68,7 +68,21 @@ export function accountCards(arr, archived = false) {
   return arr
     .map((a) => {
       const meta = [
-        `Plan: <strong>${esc((a.plan_label || "unknown").toUpperCase())} · manual</strong>`,
+        (() => {
+          const p = a.plan || null;
+          if (p) {
+            const days =
+              p.days_left == null ? "" : ` · ${p.days_left}d left`;
+            const renew = p.will_renew ? " · renews" : "";
+            const warn = p.is_free
+              ? ' <span class="plan-pending">Not Plus</span>'
+              : p.days_left != null && p.days_left <= 3
+                ? ' <span class="plan-pending">Expiring</span>'
+                : "";
+            return `Plan: <strong>${esc(String(p.label || p.plan || "unknown").toUpperCase())}${days}${renew}</strong>${warn}`;
+          }
+          return `Plan: <strong>${esc((a.plan_label || "unknown").toUpperCase())} · manual</strong>`;
+        })(),
         `Autostart: <strong>${a.autostart ? "On" : "Off"}</strong>`,
         `Parallel: <strong>${a.parallel_limit || 1} job(s)</strong>`,
         `RAM: <strong>${a.memory_mb == null ? "—" : a.memory_mb + " MiB"}</strong>`,

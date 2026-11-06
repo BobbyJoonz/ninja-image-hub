@@ -105,7 +105,7 @@ async def upstream_login_call(ctx, account_id, action, data=None):
             url = (
                 ctx.upstream(acc) + "/login" + ("/" + action if action != "init" else "")
             )
-            method = "GET" if action in ("screenshot", "init", "url", "pages") else "POST"
+            method = "GET" if action in ("screenshot", "init", "url", "pages", "plan") else "POST"
             res = await client.request(
                 method, url, headers=headers, json=data if method == "POST" else None
             )
@@ -241,3 +241,27 @@ async def remote_pages(ctx, account_id: str):
     except ValueError:
         raise HTTPException(502, "Gateway returned an invalid diagnostics payload.")
 
+
+async def remote_plan_probe(ctx, account_id: str):
+    """Raw (sanitised) plan payload from the signed-in browser: discovery endpoint."""
+    response = await ctx.upstream_login_call(account_id, "plan")
+    try:
+        return response.json()
+    except ValueError:
+        raise HTTPException(502, "Gateway returned an invalid plan payload.")
+
+
+async def remote_plan(ctx, account_id: str):
+    """Fetch the plan ChatGPT reports for this account and cache it."""
+    acc = ctx.query_account(account_id)
+    if not acc:
+        raise HTTPException(404, "Account not found.")
+    plan = await asyncio.to_thread(ctx.plan_snapshot, acc)
+    if not plan:
+        raise HTTPException(
+            502,
+            "Could not read the plan from ChatGPT. Make sure the account is signed in "
+            "and the worker is online, then try again.",
+        )
+    ctx.save_detected_plan(account_id, plan)
+    return plan

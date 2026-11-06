@@ -225,6 +225,42 @@ def _candidate_jobs(ctx):
     return (by_acc, accs)
 
 
+PLAN_REFRESH_SECONDS = 6 * 60 * 60
+
+
+def _refresh_plans(ctx):
+    """Refresh plan/expiry for online workers every few hours (outside the queue lock)."""
+    now = time.time()
+    if now - getattr(ctx, "plan_refresh_at", 0) < PLAN_REFRESH_SECONDS:
+        return 0
+    ctx.plan_refresh_at = now
+    with ctx.engine.connect() as conn:
+        rows = [dict(r) for r in conn.execute(select(ctx.accounts)).mappings()]
+    targets = [
+        acc
+        for acc in rows
+        if not acc["archived_at"] and ctx.process_state(acc) == "running"
+    ]
+    if not targets:
+        return 0
+
+    def probe(acc):
+        try:
+            return acc["id"], ctx.plan_snapshot(acc)
+        except Exception:
+            return acc["id"], None
+
+    refreshed = 0
+    try:
+        for aid, plan in ctx.health_pool.map(probe, targets, timeout=25):
+            if plan:
+                ctx.save_detected_plan(aid, plan)
+                refreshed += 1
+    except Exception:
+        pass
+    return refreshed
+
+
 def _refresh_health(ctx):
     """Probe every live worker OUTSIDE the queue lock, in parallel.
 
@@ -490,6 +526,7 @@ def scheduler_loop(ctx):
             ctx._wake_for_queue()
             ctx._reap_idle_workers()
             ctx._refresh_health()
+            getattr(ctx, "_refresh_plans", lambda: 0)()
             ctx._run_maintenance()
             ctx._dispatch_available()
         except Exception as exc:
