@@ -483,12 +483,12 @@ Tests use **mock gateways and synthetic images** — they are not a claim of ver
 
 | Document | Contents |
 |---|---|
-| [START_HERE_V6_FA.md](START_HERE_V6_FA.md) | Persian quickstart + troubleshooting table |
-| [REPORT_V6_FA.md](REPORT_V6_FA.md) | Release report: what was broken, what changed, evidence |
+| [START_HERE_FA.md](START_HERE_FA.md) | Persian quickstart + troubleshooting table |
+| [REPORT_FA.md](REPORT_FA.md) | Release report: what was broken, what changed, evidence |
 | [docs/FIRST_RUN_FA.md](docs/FIRST_RUN_FA.md) | Deep first-run: doctor, gateway, login, first image, backup |
-| [docs/OPERATIONS_V6_FA.md](docs/OPERATIONS_V6_FA.md) | Capacity, failure modes, monitoring, on-demand workers |
+| [docs/OPERATIONS_FA.md](docs/OPERATIONS_FA.md) | Capacity, failure modes, monitoring, on-demand workers |
 | [docs/DEPLOY_LINUX_FA.md](docs/DEPLOY_LINUX_FA.md) | Linux deployment, Xvfb, systemd, headless login, reuse in other automations |
-| [docs/ARCHITECTURE_V5_FA.md](docs/ARCHITECTURE_V5_FA.md) | Module layout and data flow |
+| [docs/ARCHITECTURE_FA.md](docs/ARCHITECTURE_FA.md) | Module layout and data flow |
 | [AGENTS.md](AGENTS.md) | Development contract and non-negotiable invariants |
 
 ---

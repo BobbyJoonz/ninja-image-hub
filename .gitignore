@@ -1,9 +1,21 @@
+# Secrets and local state — never commit these
 .env
+
+# Python
 .venv/
 __pycache__/
+*.py[cod]
 .pytest_cache/
-*.pyc
-/data/**
-!/data/.gitkeep
-/vendor/gpt-web-gateway/
-/vendor/PINNED_COMMIT.txt
+
+# Runtime data: database, originals, previews, exports, per-account workspaces
+/data/
+!data/.gitkeep
+
+# Third-party gateway checkout (installed by scripts/prepare_gateway.py)
+/vendor/
+
+# Logs and OS noise
+*.log
+.DS_Store
+Thumbs.db
+desktop.ini

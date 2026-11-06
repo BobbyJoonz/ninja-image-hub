@@ -1,29 +1,41 @@
-# Ninja Image Hub documents
+# Documentation index
 
-## v0.6 (current)
+Current documentation for Ninja Image Hub. Historical versioned documents were removed so this folder describes **the current state**, not old releases.
 
-- [REPORT_V6_FA.md](../REPORT_V6_FA.md) — گزارش سخت‌سازی ۰٫۶٫۰: خرابی‌های v0.5، رفع‌ها، شواهد و موارد تأییدنشده.
-- [START_HERE_V6_FA.md](../START_HERE_V6_FA.md) — شروع سریع و جدول عیب‌یابی؛ ترتیب نصب، doctor، دروازه، اجرا روی پورت ۸۰۸۱.
-- [FIRST_RUN_FA.md](FIRST_RUN_FA.md) — اولین اجرای عمیق: بررسی doctor، نصب مرورگرها، ورود دستی ChatGPT، اولین تصویر و تأیید بایت اصلی، بک‌آپ و retention.
-- [OPERATIONS_V6_FA.md](OPERATIONS_V6_FA.md) — ظرفیت، حالت‌های خرابی، پایش با `/api/health` و کارهای ممنوع.
-- [DEPLOY_LINUX_FA.md](DEPLOY_LINUX_FA.md) — استقرار روی سرور لینوکس: Xvfb برای هر worker، systemd، تونل SSH، لاگین بدون مانیتور و استفادهٔ مجدد در اتوماسیون‌های دیگر.
-- [ARCHITECTURE_V5_FA.md](ARCHITECTURE_V5_FA.md) — معماری ماژولار؛ طراحی v0.5 که در v0.6 حفظ شده است.
-- [FILE_PIPELINE_V5_FA.md](FILE_PIPELINE_V5_FA.md) — مسیر دریافت، ذخیرهٔ اصل، پیش‌نمایش و ZIP.
+## Getting started
 
-## v0.5
+| Document | Contents |
+|---|---|
+| [../README.md](../README.md) | Project overview, screenshots, multi-account model, full option and API reference |
+| [../START_HERE_FA.md](../START_HERE_FA.md) | Persian quickstart: install order, doctor, gateway, first account, first image, troubleshooting table |
+| [FIRST_RUN_FA.md](FIRST_RUN_FA.md) | Deep first-run: doctor checks, gateway + browser install, manual ChatGPT login, first image, backup |
 
-- [REPORT_V4_FA.md](../REPORT_V4_FA.md)، [REPORT_V5_FA.md](../REPORT_V5_FA.md)، [START_HERE_V5_FA.md](../START_HERE_V5_FA.md) — گزارش و راهنمای نسخهٔ قبل.
+## Operating the system
 
-## v0.4
+| Document | Contents |
+|---|---|
+| [OPERATIONS_FA.md](OPERATIONS_FA.md) | Capacity and sizing (including the 10-account recipe), failure modes, on-demand workers, `/api/health`, forbidden operations |
+| [DEPLOY_LINUX_FA.md](DEPLOY_LINUX_FA.md) | Linux server deployment: systemd, one Xvfb per worker, SSH tunnel, headless-server login, reuse in other automations |
 
-- [CONTROL_PLANE_V4_FA.md](CONTROL_PLANE_V4_FA.md) — API/تنظیمات، کنترل هم‌زمانی و حساب‌ها.
-- [ANALYTICS_DATA_DICTIONARY_FA.md](ANALYTICS_DATA_DICTIONARY_FA.md) — تعریف آمار اندازه‌گیری‌شده در برابر برآورد؛ عدد تست‌ها برای v0.6 به‌روز شده است.
-- `v4-overview-demo.png`، `v4-operations-demo.png`، `v4-analytics-demo.png`، `v4-accounts-demo.png`، `v4-mobile-demo.png` — اسکرین‌شات‌های Chromium با **دادهٔ ساختگی**.
+## How it works
 
-## تاریخی (پیش از v0.5)
+| Document | Contents |
+|---|---|
+| [ARCHITECTURE_FA.md](ARCHITECTURE_FA.md) | Module layout, `ctx` composition, data flow, route map |
+| [FILE_PIPELINE_FA.md](FILE_PIPELINE_FA.md) | Reception, atomic storage, previews, ZIP export, size budgets |
+| [ANALYTICS_FA.md](ANALYTICS_FA.md) | What each metric means, measured vs projected numbers |
 
-- [CONCURRENCY_ARCHITECTURE_FA.md](CONCURRENCY_ARCHITECTURE_FA.md) — **سند تاریخی v0.3** برای هم‌زمانی، صف، بازیابی و ظرفیت. محدوده‌های تنظیمات با کد v0.6 هم‌تراز شده‌اند، اما رفتار و جزئیات پیاده‌سازی v0.3 را توصیف می‌کند؛ برای وضعیت فعلی از `OPERATIONS_V6_FA.md` و `ARCHITECTURE_V5_FA.md` استفاده کنید.
-- `v2-accounts-preview.png` / `v2-studio-preview.png` — تصاویر نسخه‌های قبلی؛ کنترل‌های v0.3 را نشان نمی‌دهند.
-- `preview-overview-mock-data.png` / `preview-accounts-mock-data.png` — پیش‌نمایش با دادهٔ نمونه. هیچ حساب واقعی ChatGPT برای اسکرین‌شات استفاده نشده است.
+## Evidence
 
-**یادداشت v0.3:** تست بصری مرورگری در آن محیط کامل نشد (صفحات محلی و تزریق stylesheet مسدود بود)؛ پیش‌نمایش‌های v0.2 اسکرین‌شات v0.3 نیستند.
+| File | Contents |
+|---|---|
+| [TRANSFER_BENCHMARK.json](TRANSFER_BENCHMARK.json) | Storage-stage memory benchmark used by the file-pipeline note |
+| [../REPORT_FA.md](../REPORT_FA.md) | Current release report: what was broken, what was fixed, test evidence, known gaps |
+| [images/](images/) | Screenshots used by the README (real dashboard, gallery, operations panel) |
+
+## Development
+
+| Document | Contents |
+|---|---|
+| [../AGENTS.md](../AGENTS.md) | Development contract: invariants, dispatch/file/security rules, required checks |
+| [../MANIFEST_SHA256.json](../MANIFEST_SHA256.json) | SHA-256 seal of every tracked file (excludes `.env`, `data/`, `vendor/`) |

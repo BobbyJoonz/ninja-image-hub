@@ -109,7 +109,7 @@ Invoke-RestMethod http://127.0.0.1:8081/api/health
 - برای بازنشانی نشست/worker: ابتدا Stop از Accounts (تا supervisor آن را احیا نکند)، سپس Start. برای تغییر تنظیمات Gateway همین روش در worker خالی توصیه می‌شود.
 - ترتیب خاموش‌کردن: Pause ارسال → انتظار برای Jobهای فعال → Ctrl+C روی Uvicorn → بک‌آپ. ترتیب روشن‌کردن: doctor → Uvicorn → بررسی `/api/health` و Accounts.
 
-برای نصب و اولین اجرا [FIRST_RUN_FA.md](FIRST_RUN_FA.md) و برای شروع سریع [START_HERE_V6_FA.md](../START_HERE_V6_FA.md) را ببینید.
+برای نصب و اولین اجرا [FIRST_RUN_FA.md](FIRST_RUN_FA.md) و برای شروع سریع [START_HERE_FA.md](../START_HERE_FA.md) را ببینید.
 
 ## workers روی تقاضا (پیش‌فرض v0.6)
 

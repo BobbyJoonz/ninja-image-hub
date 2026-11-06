@@ -1,52 +1,145 @@
-# شروع سریع Ninja Image Hub
+# شروع سریع — Ninja Image Hub v0.6
 
-این پروژه یک **پنل وب انگلیسی واقعی** با بک‌اند Python/FastAPI است. برای شروع لازم نیست به سرور فعلی یا Hermes و 9Router دست بزنید؛ روی Windows 11 نصب و تست محلی را شروع کنید.
+این مسیر برای نصب تازه روی ویندوز است. اگر از v0.5 ارتقا می‌دهید، مستقیم به بخش «ارتقا» بروید.
 
-## مرحله ۱: پیش‌نیاز
+> **صداقت دربارهٔ پیش‌نمایش:** نسخهٔ Site/Preview با دادهٔ نمونه است و به ارائه‌دهنده وصل نمی‌شود. برای حساب و تصویر واقعی باید پنل Python را روی `127.0.0.1` اجرا کنید. هیچ ادعایی دربارهٔ ورود یا تولید واقعی ChatGPT Plus در این نسخه تأیید نشده است.
 
-Python 3.11 یا جدیدتر، Git، Node.js 22+ و Google Chrome را نصب کنید. از داخل پوشه پروژه PowerShell باز کنید.
+## ۰. پیش‌نیازها
 
-## مرحله ۲: دستورات نصب
+| مورد | حداقل | بررسی |
+|---|---|---|
+| Python | 3.11+ (تست‌شده روی 3.12) | `python --version` |
+| Node.js | 22+ | `node --version` |
+| npm و Git | روی PATH | `npm --version` / `git --version` |
+| Google Chrome | نصب‌شده (patchright از Chrome واقعی استفاده می‌کند) | `python scripts/doctor.py` |
+
+## ۱. نصب
 
 ```powershell
 py -3 -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
-python scripts/bootstrap.py
-python scripts/prepare_gateway.py
-python -m uvicorn app:app --host 127.0.0.1 --port 8080
+pip install -r requirements.txt
 ```
 
-در مرحله prepare وقتی از شما خواسته شد `INSTALL` را تایپ کنید؛ این مرحله **سورس خارجی Gateway و وابستگی‌های آن را از GitHub دانلود می‌کند**. اینترنت و مجوز دسترسی نصب لازم است. پسورد Admin و Agent API Key هنگام اجرای bootstrap یک‌بار نمایش داده می‌شوند؛ در جای امن نگهداری کنید.
+## ۲. ساخت `.env`
 
-اگر فعال‌کردن محیط مجازی در PowerShell محدود شد، به‌جای `python` از `.\.venv\Scripts\python.exe` استفاده کنید.
+```powershell
+python scripts/bootstrap.py
+```
 
-## مرحله ۳: پنل
+رمز ادمین و کلید ایجنت فقط همین یک بار چاپ می‌شوند؛ آن‌ها را در مدیر رمز نگه دارید. این فرمان فایل `.env` موجود را بازنویسی نمی‌کند.
 
-آدرس: **http://127.0.0.1:8080**
+## ۳. doctor (پیش از اجرا)
 
-با رمز Admin خودتان وارد شوید. سپس:
+```powershell
+python scripts/doctor.py
+```
 
-1. **Accounts → Add account**؛ یک اسم برای اکانت ثبت کنید.
-2. **Start** (اگر قبلاً Auto Start نشده)، سپس **Login**.
-3. در پنجره Login، داخل مرورگر کنترل‌شده با اکانت متعلق به خودتان وارد ChatGPT شوید، در پایان **Save Session** را بزنید.
-4. برای هر اکانت دیگر همین مرحله را تکرار کنید؛ نشست هر اکانت جدا است.
-5. **Image Studio → Select account → Prompt → Generate** و خروجی را در **Jobs / Gallery** ببینید.
+- خروج ۰ = آمادهٔ شروع؛ خروج ۱ = حداقل یک FAIL.
+- برای خروجی ماشین‌خوان: `python scripts/doctor.py --json`.
+- هر FAIL خط `->` دارد که فرمان رفع را نشان می‌دهد. WARN معمولاً مانع شروع نیست، ولی باید فهمیده شود.
 
-در Windows برای ورود خودکار به ChatGPT از واردکردن رمز در `.env` استفاده نشده است. اعتبار نشست ممکن است منقضی شود؛ در آن صورت Login باید تکرار شود.
+## ۴. نصب دروازهٔ مرورگر و مرورگرهای آن
 
-## مرحله ۴: اتصال ایجنت
+```powershell
+python scripts/prepare_gateway.py
+```
 
-مسیرها از قبل وجود دارند و نیاز به اجرای DeepSeek داخل این پروژه نیست:
+اسکریپت تأیید تعاملی می‌خواهد؛ برای اجرای خودکار `--yes` بدهید. نصب کامل یعنی `npm ci` **و** نصب هر دو مرورگر:
 
-- `POST /v1/images/generations` (ایجاد Job و دریافت شناسه)
-- `GET /v1/jobs/{id}` (دریافت وضعیت)
-- `GET /v1/images/{id}` (دریافت فایل نتیجه)
+- `npx playwright install chromium`
+- `npx patchright install chrome`
 
-در هر درخواست هدر `Authorization: Bearer <AGENT_API_KEY>` لازم است. شکل دقیق JSON در `README.md` آمده است.
+اگر فقط وابستگی Node را می‌خواهید (و مرورگرها را دستی نصب می‌کنید) از `--skip-browsers` استفاده کنید. نسخهٔ ثبت‌شده در `vendor/PINNED_COMMIT.txt` نگه داشته می‌شود.
 
-## مرحله ۵: تفسیر نتیجه تست‌ها
+**اگر شبکه محدود است:** وقتی `github.com` بسته باشد، اسکریپت به‌طور خودکار از tarball سایت `codeload.github.com` نصب می‌کند. وقتی دانلود مرورگر Playwright هم مسدود باشد، فقط هشدار می‌دهد، چون موتور پیش‌فرض gateway (patchright) از **Google Chrome نصب‌شده** روی سیستم استفاده می‌کند؛ `doctor.py` می‌گوید کدام مسیر مرورگر فعال است.
 
-تست‌های کدنویسی و ارتباط پنل تا یک Gateway شبیه‌سازی‌شده موفق بوده‌اند. **لاگین واقعی و تولید عکس با اکانت ChatGPT در محیط ساخت تست نشده است.** خود سرویس اتوماسیون مرورگر غیررسمی است و ممکن است خلاف شرایط استفاده OpenAI باشد. برای استفاده تجاری پایدار و رعایت شرایط سرویس، بهتر است از API رسمی تصاویر استفاده کنید.
+**اجرای یک‌کلیکی ویندوز:** روی `start_windows.bat` دوبار کلیک کنید؛ بار اول `.env` می‌سازد و بعد پنل را روی `http://127.0.0.1:8081` بالا می‌آورد.
 
-گزارش کامل فنی و ریسک‌ها در `REPORT_FA.md` و راهنمای نصب فنی در `README.md` موجود است.
+## ۵. اجرای پنل
+
+```powershell
+python -m uvicorn app:app --host 127.0.0.1 --port 8081 --workers 1
+```
+
+- **پورت ۸۰۸۰ را پیش‌فرض نگیرید:** روی این ماشین Adobe Connect پورت `127.0.0.1:8080` را اشغال کرده و اجرای `--port 8080` خطای «address already in use» می‌دهد. `8081` مثال امن است.
+- اگر پورت دیگری هم اشغال بود، `doctor.py` یک پورت آزاد پیشنهاد می‌دهد.
+- فقط **یک** فرایند Uvicorn؛ `--workers 1` و بدون `--reload` وقتی Job فعال است.
+
+## ۶. ورود
+
+مرورگر را باز کنید: `http://127.0.0.1:8081` و با رمز ادمینِ bootstrap وارد شوید.
+
+## ۷. افزودن حساب
+
+در بخش **Accounts** → **Add Account**. پورت worker به‌صورت خودکار از بازهٔ ۴۱۰۰۰ به بالا انتخاب می‌شود. پس از ساخت، حساب را **Start** کنید و منتظر بمانید تا وضعیت `online` و سپس نشست `connected` شود.
+
+## ۸. ورود دستی ChatGPT
+
+برای هر حساب، صفحهٔ ورود تعبیه‌شده را باز کنید:
+
+```text
+http://127.0.0.1:8081/accounts/<ACCOUNT_ID>/login
+```
+
+داخل همان صفحه، ورود را **دستی** انجام دهید (ایمیل/رمز/کد دومرحله‌ای خودتان)، سپس **Save** را بزنید. نشست در پوشهٔ همان حساب زیر `DATA_DIR` نگه داشته می‌شود. Hub کوکی را لاگ یا صادر نمی‌کند و MFA/CAPTCHA را دور نمی‌زند.
+
+## ۹. اولین Job
+
+در **Image Studio**: پرامپت، تعداد تصویر (`n`)، نسبت تصویر و ترجیح `Best/Balanced/Draft` را وارد کنید و ارسال کنید. `Best` فقط راهنمای متن پرامپت است، نه کیفیت رسمی API.
+
+- وضعیت‌ها را در **Jobs/Gallery** ببینید: `queued` → `running` → `completed` / `partial` / `failed` / `rate_limited` / `unknown`.
+- اگر پاسخ ثبت سفارش قطع شد، همان فرم را دوباره بفرستید؛ کلید idempotency در `sessionStorage` همان تب حفظ می‌شود و Job تکراری ساخته نمی‌شود. اگر تب را بستید، اول Jobs را بررسی کنید.
+- `unknown` یعنی ممکن است خروجی upstream ساخته شده باشد؛ **دوباره ارسال نکنید** و ابتدا دستی بررسی کنید.
+
+## ۱۰. تصاویر کجا ذخیره می‌شوند؟
+
+اصل فایل‌ها بدون re-encode در این مسیر ذخیره می‌شوند:
+
+```text
+<DATA_DIR>\gallery\<job_id>-<position>.png
+```
+
+پیش‌فرض `DATA_DIR` پوشهٔ `data/` پروژه است. ردیف هر تصویر در جدول `job_images` دیتابیس `data\hub.db` ثبت می‌شود و از **Gallery** می‌توانید اصل یا ZIP همان Job را بگیرید. پیش‌نمایش‌های WebP فقط مشتق‌شده‌اند و در `data\previews` قرار می‌گیرند؛ آن‌ها جای اصل فایل را نمی‌گیرند.
+
+## workers روی تقاضا (پیش‌فرض)
+
+مرورگر فقط هنگام کار باز است: پس از ۲۰ دقیقه بی‌کاری خودش بسته می‌شود و با اولین Job (یا باز کردن صفحهٔ Login) خودکار بیدار می‌شود. برای تغییر: Operations → «Idle browser shutdown (min)»؛ مقدار ۰ یعنی همیشه باز. حساب را دستی Stop نکن، وگرنه Jobهایش در صف می‌مانند.
+
+## ارتقا از v0.5
+
+۱. Pause کردن ارسال، انتظار برای Jobهای فعال، سپس توقف فرایند قدیمی.
+۲. بک‌آپ از `.env` و کل `data/` (به‌دلیل WAL فقط `hub.db` کافی نیست).
+۳. جایگزینی سورس با حفظ `.env` و `data/`؛ اجرای دوبارهٔ bootstrap لازم نیست.
+۴. `pip install -r requirements.txt` → `python scripts/doctor.py` → اجرای تک‌فرایندی روی `8081`.
+۵. مهاجرت SQL افزایشی است؛ Jobهای `running` باقی‌مانده پس از قطع ناگهانی `unknown` می‌شوند.
+
+## اگر این خطا را دیدی
+
+| نشانه | علت محتمل | کار |
+|---|---|---|
+| `[Errno 10048] address already in use` / «address already in use» | پورت اشغال است؛ روی این ماشین ۸۰۸۰ در اختیار Adobe Connect است | `--port 8081` (یا پورت پیشنهادی doctor)؛ مطمئن شوید فقط یک Uvicorn اجراست |
+| صفحه روی فرم ورود می‌ماند و هیچ درخواستی به `/api/*` نمی‌رود | `.js` با MIME غیر JS سرو می‌شود (نگاشت رجیستری ویندوز) | پنل خودش MIME را pin می‌کند؛ پنل را با Uvicorn اجرا کنید، نه `python -m http.server`. برای preview از `python scripts/serve_preview.py --port 8090` استفاده کنید |
+| doctor: `google chrome: not found` یا worker با خطای مرورگر بالا نمی‌آید | Chrome نصب نیست یا patchright مرورگر را نصب نکرده | Google Chrome را نصب کنید و در `vendor/gpt-web-gateway` دستور `npx patchright install chrome` را اجرا کنید |
+| doctor: `gateway: not installed` | `vendor/gpt-web-gateway/src/server.js` وجود ندارد | `python scripts/prepare_gateway.py` (با اینترنت و Git/Node) |
+| وضعیت نشست `unverified` یا `unknown`؛ ورود لازم است | نشست ChatGPT منقضی شده یا ورود کامل نشده | صفحهٔ `/accounts/<id>/login` را باز کنید و دستی دوباره وارد شوید و Save بزنید |
+| `rate_limited` و `cooldown_until` در حساب | پاسخ 429 از ارائه‌دهنده | منتظر پایان cooldown بمانید؛ حساب عوض نکنید و محدودیت را دور نزنید |
+| Job در `unknown` ماند | نتیجهٔ ارسال upstream نامعلوم است | دستی بررسی کنید؛ دوباره ارسال نکنید. Hub هیچ replay خودکاری ندارد |
+| doctor: `env file: .env is missing` | bootstrap اجرا نشده یا `.env` جابه‌جا شده | `python scripts/bootstrap.py`؛ در نصب موجود، `.env` را از بک‌آپ برگردانید |
+| doctor: `python packages: missing ...` | وابستگی‌ها نصب نیستند | `pip install -r requirements.txt` داخل venv فعال |
+
+## روی سرور لینوکس
+
+```bash
+sudo bash deploy/install_linux.sh          # پکیج‌ها، Node 22، Chrome، Xvfb، venv، .env، systemd
+sudo -u ninja -i && cd /opt/ninja-image-hub
+.venv/bin/python scripts/doctor.py
+.venv/bin/python scripts/prepare_gateway.py --yes
+sudo systemctl restart ninja-image-hub
+```
+
+پنل روی loopback می‌ماند؛ از لپ‌تاپ با `ssh -N -L 8081:127.0.0.1:8081 user@server` وصل شو. برای **لاگین ChatGPT روی سرور هیچ مانیتوری لازم نیست**: Accounts → Login تصویر مرورگر سرور را پخش می‌کند و کلیک/تایپ را می‌فرستد؛ بعد از ورود **Save Session** بزن. مرورگر headless نیست، روی نمایشگر مجازی Xvfb (یکی برای هر اکانت) اجرا می‌شود.
+
+جزئیات کامل: [docs/DEPLOY_LINUX_FA.md](docs/DEPLOY_LINUX_FA.md)
+
+برای جزئیات بیشتر: [REPORT_FA.md](REPORT_FA.md) · [docs/FIRST_RUN_FA.md](docs/FIRST_RUN_FA.md) · [docs/OPERATIONS_FA.md](docs/OPERATIONS_FA.md) · [docs/README.md](docs/README.md)
