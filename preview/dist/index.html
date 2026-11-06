@@ -957,6 +957,11 @@ GET /v1/jobs/&lt;job UUID&gt;</pre>
           Applying a change needs a worker restart: Stop → Start this account. The
           gateway then signs in by itself on startup and after session expiry.
         </p>
+        <div class="modal-actions">
+          <button type="button" class="btn secondary" id="restartForAutoLogin">
+            Restart worker now (Stop → Start)
+          </button>
+        </div>
       </section>
     </dialog>
     <dialog id="logsDialog" class="modal log-modal">

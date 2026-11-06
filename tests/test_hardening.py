@@ -599,6 +599,10 @@ def test_login_page_ships_the_resilient_client_flow(loaded):
         "Panel session expired",    # CSRF/session rotation
         "Open ChatGPT",             # explicit recovery action
         "x-csrf-token",             # every action carries CSRF
+        'id="marker"',              # visible click feedback (there is no live cursor)
+        "toggleDirect",             # direct keyboard capture
+        "wheelScroll",              # wheel -> PageUp/PageDown
+        "Type directly: off",       # discoverable toggle
     ):
         assert marker in page, marker
 

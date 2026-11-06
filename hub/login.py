@@ -171,7 +171,13 @@ async def remote_key(ctx, account_id: str, body: LoginKey):
         "Backspace",
         "ArrowDown",
         "ArrowUp",
+        "ArrowLeft",
+        "ArrowRight",
         "Space",
+        "PageDown",
+        "PageUp",
+        "Home",
+        "End",
     }:
         raise HTTPException(422, "Unsupported key.")
     await ctx.upstream_login_call(account_id, "key", body.model_dump())

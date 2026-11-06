@@ -58,6 +58,22 @@ export function initLoginDialog() {
       button.disabled = false;
     }
   });
+  $("restartForAutoLogin").addEventListener("click", async () => {
+    if (!loginAccountId) return;
+    const button = $("restartForAutoLogin");
+    button.disabled = true;
+    try {
+      await api(`/api/accounts/${loginAccountId}/stop`, { method: "POST" });
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      await api(`/api/accounts/${loginAccountId}/start`, { method: "POST" });
+      toast("Worker restarted — the gateway will use the saved credentials.");
+      await refreshData(true);
+    } catch (err) {
+      toast(err.message, true);
+    } finally {
+      button.disabled = false;
+    }
+  });
   $("clearAutoLogin").addEventListener("click", async () => {
     if (!loginAccountId) return;
     if (!confirm("Remove the stored auto-login credentials for this account?"))

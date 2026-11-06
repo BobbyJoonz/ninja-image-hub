@@ -30,8 +30,13 @@ PAGE = r"""<!doctype html>
   #state { margin: 12px 0; padding: 10px 12px; border-radius: 9px; border: 1px solid var(--line); background: #0c1727; color: var(--muted); font-size: 14px; }
   #state.good { border-color: #2f6f57; color: var(--good); }
   #state.bad { border-color: #6f3030; color: var(--bad); }
-  .screen { display: block; width: 100%; max-width: 1280px; border: 1px solid var(--line); border-radius: 14px; background: #15243a; cursor: crosshair; min-height: 120px; }
-  .hint { color: var(--muted); font-size: 12px; }
+  .stage { position: relative; display: inline-block; max-width: 100%; line-height: 0; }
+  .screen { display: block; width: 100%; max-width: 1280px; border: 1px solid var(--line); border-radius: 14px; background: #15243a; cursor: crosshair; min-height: 120px; user-select: none; -webkit-user-drag: none; touch-action: none; }
+  #marker { position: absolute; width: 20px; height: 20px; margin: -10px 0 0 -10px; border: 2px solid var(--accent); border-radius: 50%; box-shadow: 0 0 0 2px rgba(0,0,0,.5); pointer-events: none; opacity: 0; transition: opacity .25s ease; }
+  #marker.show { opacity: 1; }
+  .screen:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .hint { color: var(--muted); font-size: 12px; line-height: 1.5; }
+  .hint b { color: var(--text); }
 </style>
 </head>
 <body>
@@ -49,6 +54,9 @@ PAGE = r"""<!doctype html>
     <button onclick="sendKey('Escape')">Esc</button>
     <button id="saveBtn" onclick="saveSession()">Save Session</button>
     <button onclick="manualRefresh()">Refresh</button>
+    <button onclick="sendKey('PageUp')">PgUp</button>
+    <button onclick="sendKey('PageDown')">PgDn</button>
+    <button id="directBtn" onclick="toggleDirect()">Type directly: off</button>
   </div>
   <div class="toolbar">
     <input id="type" type="password" placeholder="Type into the focused browser field" autocomplete="off">
@@ -56,8 +64,11 @@ PAGE = r"""<!doctype html>
     <button onclick="toggleShow()">Show / Hide</button>
   </div>
   <div id="state">Starting…</div>
-  <img id="screen" class="screen" alt="Live browser screenshot" onclick="clickScreen(event)">
-  <p class="hint" id="footnote">Clicks are mapped to the screenshot's real pixels. If the image stops updating, press Refresh.</p>
+  <div class="stage" id="stage">
+    <img id="screen" class="screen" tabindex="0" alt="Live browser screenshot" draggable="false" onclick="clickScreen(event)" ondblclick="doubleClick(event)" onwheel="wheelScroll(event)">
+    <div id="marker" aria-hidden="true"></div>
+  </div>
+  <p class="hint" id="footnote"><b>How to interact:</b> there is no live mouse cursor inside the image — every click is forwarded to the worker and a green ring shows where it landed. Click the field (the ring appears), then type below and press <b>Enter</b>, or turn on <b>type directly</b> to type without leaving the image. The wheel scrolls the page.</p>
 </main>
 <script>
 const BASE = __BASE__;
@@ -70,6 +81,7 @@ let timer = null;
 let lastOk = 0;
 let pollStartedAt = 0;
 let failures = 0;
+let lastActionAt = 0;
 const MAX_POLL_MS = 9 * 60 * 1000;   // stop before the gateway's 10-min manual-login lease
 
 const stateBox = document.getElementById('state');
@@ -158,7 +170,7 @@ async function refreshOnce() {
     if (old) setTimeout(() => URL.revokeObjectURL(old), 2000);
     lastOk = Date.now();
     failures = 0;
-    if (!saved) setState('Live. Click the image, then type in the field below.', 'good');
+    if (!saved && Date.now() - lastActionAt > 6000) setState('Live. Click a field in the image, then type below and press Enter.', 'good');
   } catch (err) {
     if (err.status === 403) { sessionExpired(); return; }
     failures += 1;
@@ -246,22 +258,112 @@ function typeNow() {
   const value = el.value;
   if (!value) return;
   el.value = '';
-  sendAction('type', { text: value });
+  lastActionAt = Date.now();
+  setState('Typed ' + value.length + ' character(s) into the focused browser field.');
+  sendAction('type', { text: value }).then(() => el.focus());
 }
 
 document.getElementById('type').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') { e.preventDefault(); typeNow(); }
 });
 
-function clickScreen(event) {
+const marker = document.getElementById('marker');
+const typeInput = document.getElementById('type');
+const directBtn = document.getElementById('directBtn');
+const stage = document.getElementById('stage');
+let directMode = false;
+let markerTimer = null;
+let scrollCooldown = 0;
+let keyBuffer = '';
+let keyTimer = null;
+
+function showMarker(clientX, clientY) {
+  const rect = screenImg.getBoundingClientRect();
+  marker.style.left = (clientX - rect.left) + 'px';
+  marker.style.top = (clientY - rect.top) + 'px';
+  marker.classList.add('show');
+  if (markerTimer) clearTimeout(markerTimer);
+  markerTimer = setTimeout(() => marker.classList.remove('show'), 2600);
+}
+
+function toRemote(event) {
   const width = screenImg.naturalWidth || 1280;
   const height = screenImg.naturalHeight || 720;
   const rect = screenImg.getBoundingClientRect();
-  if (!rect.width || !rect.height) return;
-  const x = Math.max(0, Math.min(width - 1, Math.round((event.clientX - rect.left) * width / rect.width)));
-  const y = Math.max(0, Math.min(height - 1, Math.round((event.clientY - rect.top) * height / rect.height)));
-  sendAction('click', { x, y });
+  if (!rect.width || !rect.height) return null;
+  return {
+    x: Math.max(0, Math.min(width - 1, Math.round((event.clientX - rect.left) * width / rect.width))),
+    y: Math.max(0, Math.min(height - 1, Math.round((event.clientY - rect.top) * height / rect.height))),
+  };
 }
+
+function clickScreen(event) {
+  const point = toRemote(event);
+  if (!point) return;
+  showMarker(event.clientX, event.clientY);
+  lastActionAt = Date.now();
+  setState('Clicked at ' + point.x + ',' + point.y + ' — green ring shows where it landed.');
+  if (directMode) screenImg.focus(); else typeInput.focus();
+  sendAction('click', point);
+}
+
+function doubleClick(event) {
+  const point = toRemote(event);
+  if (!point) return;
+  showMarker(event.clientX, event.clientY);
+  lastActionAt = Date.now();
+  setState('Double-click at ' + point.x + ',' + point.y);
+  sendAction('click', point).then(() => sendAction('click', point));
+}
+
+function wheelScroll(event) {
+  event.preventDefault();
+  const now = Date.now();
+  if (now < scrollCooldown) return;
+  scrollCooldown = now + 220;
+  const key = event.deltaY > 0 ? 'PageDown' : 'PageUp';
+  sendKey(key);
+  setState('Scrolled (' + key + ')');
+}
+
+function flushKeys() {
+  if (!keyBuffer) return;
+  const text = keyBuffer;
+  keyBuffer = '';
+  lastActionAt = Date.now();
+  setState('Typed ' + text.length + ' character(s) directly into the browser.');
+  sendAction('type', { text }).then(() => { if (directMode) screenImg.focus(); });
+}
+
+function toggleDirect() {
+  directMode = !directMode;
+  directBtn.textContent = 'Type directly: ' + (directMode ? 'on' : 'off');
+  directBtn.style.background = directMode ? 'var(--accent)' : '';
+  directBtn.style.color = directMode ? '#0a1220' : '#fff';
+  setState(directMode
+    ? 'Direct typing is ON — click the browser field, then type anywhere. Enter/Tab/Backspace work.'
+    : 'Direct typing is OFF — type in the box and press Enter.');
+  if (directMode) screenImg.focus();
+}
+
+document.addEventListener('keydown', (event) => {
+  if (!directMode) return;
+  if (event.target === typeInput) return; // the normal input handler owns this
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test((event.target.tagName || '').toUpperCase())) return;
+  const special = ['Enter', 'Tab', 'Escape', 'Backspace', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
+  if (special.includes(event.key)) {
+    event.preventDefault();
+    flushKeys();
+    sendKey(event.key);
+    return;
+  }
+  if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+    event.preventDefault();
+    keyBuffer += event.key;
+    if (keyTimer) clearTimeout(keyTimer);
+    keyTimer = setTimeout(flushKeys, 140);
+  }
+});
 
 async function saveSession() {
   if (busy) return;
