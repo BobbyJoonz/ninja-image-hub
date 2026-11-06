@@ -9,7 +9,6 @@ __pycache__/
 
 # Runtime data: database, originals, previews, exports, per-account workspaces
 /data/
-!data/.gitkeep
 
 # Third-party gateway checkout (installed by scripts/prepare_gateway.py)
 /vendor/
