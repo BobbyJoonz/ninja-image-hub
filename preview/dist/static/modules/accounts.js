@@ -32,6 +32,10 @@ async function loadAutoLoginState(id) {
 
 export function initLoginDialog() {
   $("closeLogin").addEventListener("click", () => $("loginDialog").close());
+  $("openLiveView").addEventListener("click", () => {
+    if (!loginAccountId) return;
+    window.open(`/accounts/${loginAccountId}/live`, "_blank", "noopener,noreferrer");
+  });
   $("openRemoteLogin").addEventListener("click", () => {
     if (!loginAccountId) return;
     window.open(

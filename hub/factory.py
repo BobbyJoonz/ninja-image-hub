@@ -112,6 +112,9 @@ def create_app():
         setattr(ctx, name, partial(getattr(accounts, name), ctx))
     for name in (
         "login_page",
+        "live_page",
+        "live_stream",
+        "live_input",
         "upstream_login_call",
         "remote_init",
         "remote_shot",
@@ -266,6 +269,11 @@ def create_app():
         dependencies=[Depends(ctx.require_admin)],
     )(ctx.login_page)
     app.get(
+        "/accounts/{account_id}/live",
+        response_class=HTMLResponse,
+        dependencies=[Depends(ctx.require_admin)],
+    )(ctx.live_page)
+    app.get(
         "/api/accounts/{account_id}/remote/init",
         dependencies=[Depends(ctx.require_admin)],
     )(ctx.remote_init)
@@ -273,6 +281,14 @@ def create_app():
         "/api/accounts/{account_id}/remote/screenshot",
         dependencies=[Depends(ctx.require_admin)],
     )(ctx.remote_shot)
+    app.get(
+        "/api/accounts/{account_id}/remote/live",
+        dependencies=[Depends(ctx.require_admin)],
+    )(ctx.live_stream)
+    app.post(
+        "/api/accounts/{account_id}/remote/input",
+        dependencies=[Depends(ctx.csrf_admin)],
+    )(ctx.live_input)
     app.get(
         "/api/accounts/{account_id}/remote/url",
         dependencies=[Depends(ctx.require_admin)],

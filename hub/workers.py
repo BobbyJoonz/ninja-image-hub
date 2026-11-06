@@ -542,6 +542,155 @@ router.get('/login/settings', async (req, res) => {
 module.exports = router;"""
 
 
+LIVE_VIEW_MARKER = "ninja:live-view"
+
+LIVE_VIEW_JS = r"""// ninja:live-view — real-time frames + trusted input.
+// GET  /login/live?mode=poll|screencast -> multipart MJPEG
+//   poll       (default): captureScreenshot loop, steady fps, works everywhere
+//   screencast: CDP Page.startScreencast, paints only when the page changes
+// POST /login/input -> batched mouse/key/text events via CDP Input domain
+router.get('/login/live', async (req, res) => {
+  let client = null;
+  let timer = null;
+  let closed = false;
+  try {
+    await enterManualLogin({ acquire: false });
+    const page = await getLoginPage();
+    const mode = (req.query && req.query.mode) === 'screencast' ? 'screencast' : 'poll';
+    res.writeHead(200, {
+      'Content-Type': 'multipart/x-mixed-replace; boundary=frame',
+      'Cache-Control': 'no-store, no-cache, must-revalidate',
+      'Pragma': 'no-cache',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+
+    const writeFrame = (buffer) => {
+      if (closed) return;
+      res.write('--frame\r\nContent-Type: image/jpeg\r\nContent-Length: ' + buffer.length + '\r\n\r\n');
+      res.write(buffer);
+      res.write('\r\n');
+    };
+
+    if (mode === 'screencast') {
+      client = await page.context().newCDPSession(page);
+      client.on('Page.screencastFrame', async (frame) => {
+        if (closed) return;
+        try {
+          writeFrame(Buffer.from(frame.data, 'base64'));
+          await client.send('Page.screencastFrameAck', { sessionId: frame.sessionId });
+        } catch (err) {}
+      });
+      await client.send('Page.startScreencast', {
+        format: 'jpeg', quality: 32, maxWidth: 860, maxHeight: 560, everyNthFrame: 1,
+      });
+    } else {
+      let busy = false;
+      timer = setInterval(async () => {
+        if (closed || busy) return;
+        busy = true;
+        try {
+          const buffer = await page.screenshot({ type: 'jpeg', quality: 32, scale: 'css', optimizeForSpeed: true });
+          writeFrame(buffer);
+        } catch (err) {}
+        busy = false;
+      }, 70);
+    }
+
+    req.on('close', async () => {
+      closed = true;
+      if (timer) clearInterval(timer);
+      if (client) {
+        try { await client.send('Page.stopScreencast'); } catch (err) {}
+        try { await client.detach(); } catch (err) {}
+      }
+      try { res.end(); } catch (e) {}
+    });
+  } catch (err) {
+    if (timer) clearInterval(timer);
+    if (client) { try { await client.detach(); } catch (e) {} }
+    if (!res.headersSent) res.status(err.status || 500).json({ error: err.message });
+    else res.end();
+  }
+});
+
+const LIVE_VK = {
+  Enter: 13, Tab: 9, Backspace: 8, Escape: 27, ArrowUp: 38, ArrowDown: 40,
+  ArrowLeft: 37, ArrowRight: 39, Delete: 46, Home: 36, End: 35,
+  PageUp: 33, PageDown: 34, ' ': 32, Shift: 16, Control: 17, Alt: 18, Meta: 91,
+};
+
+router.post('/login/input', async (req, res) => {
+  let client = null;
+  try {
+    await enterManualLogin({ acquire: false });
+    const page = await getLoginPage();
+    client = await page.context().newCDPSession(page);
+    const events = Array.isArray(req.body && req.body.events) ? req.body.events.slice(0, 200) : [];
+    for (const ev of events) {
+      if (!ev || typeof ev !== 'object') continue;
+      if (ev.type === 'mouse') {
+        await client.send('Input.dispatchMouseEvent', {
+          type: ev.action === 'down' ? 'mousePressed' : ev.action === 'up' ? 'mouseReleased' : ev.action === 'wheel' ? 'mouseWheel' : 'mouseMoved',
+          x: Number(ev.x) || 0,
+          y: Number(ev.y) || 0,
+          button: ev.button === 'right' ? 'right' : 'left',
+          buttons: Number(ev.buttons) || 0,
+          clickCount: Number(ev.action === 'down' ? 1 : 1),
+          deltaX: Number(ev.deltaX) || 0,
+          deltaY: Number(ev.deltaY) || 0,
+        });
+      } else if (ev.type === 'key') {
+        const vk = Number(ev.vk) || LIVE_VK[ev.key] || 0;
+        const key = String(ev.key || '');
+        await client.send('Input.dispatchKeyEvent', {
+          type: 'rawKeyDown', key, code: key,
+          windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk,
+        });
+        await client.send('Input.dispatchKeyEvent', {
+          type: 'keyUp', key, code: key,
+          windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk,
+        });
+      } else if (ev.type === 'text') {
+        const chunk = String(ev.text || '').slice(0, 500);
+        if (!chunk) continue;
+        await client.send('Input.insertText', { text: chunk });
+        // Some composers only react to real key events; mirror the last character.
+        const last = chunk[chunk.length - 1];
+        await client.send('Input.dispatchKeyEvent', {
+          type: 'keyDown', key: last, text: last, unmodifiedText: last,
+        });
+        await client.send('Input.dispatchKeyEvent', {
+          type: 'keyUp', key: last,
+        });
+      }
+    }
+    res.json({ ok: true, applied: events.length });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  } finally {
+    if (client) { try { await client.detach(); } catch (e) {} }
+  }
+});
+
+module.exports = router;"""
+
+
+def _patch_live_view(worker):
+    """Install the live-view routes once; both routes belong to the same block."""
+    path = pathlib.Path(worker) / "src" / "routes" / "login.js"
+    if not path.is_file():
+        return False
+    content = path.read_text(encoding="utf-8")
+    if LIVE_VIEW_MARKER in content:
+        return False  # already installed
+    anchor = "module.exports = router;"
+    if content.count(anchor) != 1:
+        return False
+    path.write_text(content.replace(anchor, LIVE_VIEW_JS, 1), encoding="utf-8")
+    return True
+
+
 def _install_probe(worker, js, marker, family):
     path = pathlib.Path(worker) / "src" / "routes" / "login.js"
     if not path.is_file():
@@ -563,6 +712,51 @@ def _patch_plan_probe(worker):
 
 def _patch_settings_probe(worker):
     return _install_probe(worker, SETTINGS_PROBE_JS, SETTINGS_PROBE_MARKER, "settings-probe")
+
+
+OCCLUSION_MARKER = "ninja:no-occlusion-throttle"
+
+
+def _patch_launch_args(worker):
+    """Disable Chrome's occlusion/renderer backgrounding for live streaming + timers."""
+    path = pathlib.Path(worker) / "src" / "browser-fingerprint.js"
+    if not path.is_file():
+        return False
+    content = path.read_text(encoding="utf-8")
+    if OCCLUSION_MARKER in content:
+        return False
+    old = (
+        "function launchArgs(engine = 'stealth') {\n"
+        "  return engine === 'patchright'\n"
+        "    ? COMMON_CHROMIUM_ARGS.filter((a) => !a.startsWith('--disable-blink-features='))\n"
+        "    : [...COMMON_CHROMIUM_ARGS];\n"
+        "}"
+    )
+    if content.count(old) != 1:
+        return False
+    new = (
+        "// ninja:no-occlusion-throttle — keep painting and timers alive when the window\n"
+        "// is covered or minimized, so the live screencast stays smooth and automation\n"
+        "// timers do not get backgrounded.\n"
+        "const NINJA_LIVE_ARGS = [\n"
+        "  '--disable-backgrounding-occluded-windows',\n"
+        "  '--disable-renderer-backgrounding',\n"
+        "  '--disable-background-timer-throttling',\n"
+        "  '--disable-features=CalculateNativeWinOcclusion',\n"
+        "];\n"
+        "\n"
+        "function launchArgs(engine = 'stealth') {\n"
+        "  const base = engine === 'patchright'\n"
+        "    ? COMMON_CHROMIUM_ARGS.filter((a) => !a.startsWith('--disable-blink-features='))\n"
+        "    : [...COMMON_CHROMIUM_ARGS];\n"
+        "  return [\n"
+        "    ...base.filter((arg) => !NINJA_LIVE_ARGS.includes(arg)),\n"
+        "    ...NINJA_LIVE_ARGS,\n"
+        "  ];\n"
+        "}"
+    )
+    path.write_text(content.replace(old, new, 1), encoding="utf-8")
+    return True
 
 
 def ensure_worker_copy(ctx, acc):
@@ -597,6 +791,8 @@ def ensure_worker_copy(ctx, acc):
     _patch_login_diagnostics(worker)
     _patch_plan_probe(worker)
     _patch_settings_probe(worker)
+    _patch_live_view(worker)
+    _patch_launch_args(worker)
     return worker
 
 

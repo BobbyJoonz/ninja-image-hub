@@ -5,9 +5,10 @@ import json
 
 import httpx
 from fastapi import HTTPException, Request
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, Response, StreamingResponse
+from . import live_page as live_page_template
 from . import login_page as login_page_template
-from .schemas import LoginClick, LoginKey, LoginType
+from .schemas import LiveInput, LoginClick, LoginKey, LoginType
 
 # GET /login (init) waits for the browser's exclusive lock, which a running generation
 # job can hold for minutes. Fail fast with a clear message instead of hanging the page.
@@ -293,3 +294,107 @@ async def remote_settings_probe(ctx, account_id: str):
         return response.json()
     except ValueError:
         raise HTTPException(502, "Gateway returned an invalid settings payload.")
+
+def live_page(ctx, account_id: str, request: Request):
+    """Fast live view: CDP screencast with a real cursor and trusted input."""
+    acc = ctx.query_account(account_id)
+    if not acc:
+        raise HTTPException(404, "Account not found.")
+    ctx.touch_account(account_id)
+    if ctx.process_state(acc) != "running":
+        ctx.wake_worker_async(acc)
+    csrf = request.session.get("csrf")
+    if not csrf:
+        raise HTTPException(401, "Panel session changed; sign in again.")
+    return HTMLResponse(
+        live_page_template.render(
+            account_id=account_id,
+            title=html.escape(acc["name"]),
+            csrf=json.dumps(csrf),
+            classic_url=f"/accounts/{account_id}/login",
+        ),
+        headers={"Cache-Control": "no-store", "X-Frame-Options": "DENY"},
+    )
+
+
+async def live_stream(ctx, account_id: str, request: Request):
+    """Proxy the gateway's MJPEG screencast to the panel (single stream per viewer)."""
+    acc = ctx.query_account(account_id)
+    if not acc:
+        raise HTTPException(404, "Account not found.")
+    ctx.touch_account(account_id)
+    mode = "screencast" if request.query_params.get("mode") == "screencast" else "poll"
+    url = ctx.upstream(acc) + "/login/live?mode=" + mode
+    client = httpx.AsyncClient(trust_env=False, timeout=httpx.Timeout(30.0, read=None))
+    try:
+        request = client.build_request(
+            "GET", url, headers={"Authorization": f"Bearer {acc['api_secret']}"}
+        )
+        response = await client.send(request, stream=True)
+    except httpx.RequestError as exc:
+        await client.aclose()
+        raise HTTPException(503, "Gateway not ready: " + str(exc)[:100])
+    if response.status_code >= 400:
+        detail = "Live view unavailable."
+        try:
+            detail = (await response.aread()).decode("utf-8", "replace")[:200] or detail
+        except Exception:
+            pass
+        await response.aclose()
+        await client.aclose()
+        raise HTTPException(response.status_code, detail)
+    if "multipart/x-mixed-replace" not in response.headers.get("content-type", ""):
+        await response.aclose()
+        await client.aclose()
+        raise HTTPException(502, "Gateway did not start a screencast.")
+
+    async def frames():
+        try:
+            async for chunk in response.aiter_raw():
+                yield chunk
+        finally:
+            await response.aclose()
+            await client.aclose()
+
+    return StreamingResponse(
+        frames(),
+        media_type="multipart/x-mixed-replace; boundary=frame",
+        headers={
+            "Cache-Control": "no-store, no-cache",
+            "Pragma": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+async def live_input(ctx, account_id: str, body: LiveInput):
+    """Forward batched mouse/keyboard events as trusted CDP input."""
+    events = []
+    for event in body.events[:200]:
+        if not isinstance(event, dict):
+            continue
+        kind = event.get("type")
+        if kind == "mouse":
+            events.append(
+                {
+                    "type": "mouse",
+                    "action": event.get("action"),
+                    "x": int(event.get("x") or 0),
+                    "y": int(event.get("y") or 0),
+                    "button": event.get("button"),
+                    "buttons": int(event.get("buttons") or 0),
+                    "deltaX": float(event.get("deltaX") or 0),
+                    "deltaY": float(event.get("deltaY") or 0),
+                }
+            )
+        elif kind == "key":
+            events.append(
+                {"type": "key", "key": str(event.get("key") or "")[:32], "vk": int(event.get("vk") or 0)}
+            )
+        elif kind == "text":
+            events.append({"type": "text", "text": str(event.get("text") or "")[:500]})
+    if not events:
+        return {"ok": True, "applied": 0}
+    await ctx.upstream_login_call(account_id, "input", {"events": events})
+    return {"ok": True, "applied": len(events)}
+

@@ -10,7 +10,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Node.js](https://img.shields.io/badge/node-22%2B-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![SQLite](https://img.shields.io/badge/SQLite-WAL-003B57?logo=sqlite&logoColor=white)](https://www.sqlite.org/wal.html)
-[![Tests](https://img.shields.io/badge/tests-115%20passed%20%C2%B7%201%20skipped-2ea043)](#verification)
+[![Tests](https://img.shields.io/badge/tests-117%20passed%20%C2%B7%201%20skipped-2ea043)](#verification)
 [![Accounts](https://img.shields.io/badge/accounts-1%20to%2016-8957e5)](#multi-account-model)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-linux%20%7C%20windows-6e7681)](#quick-start)
@@ -121,6 +121,13 @@ A script that fires ten prompts in parallel "works" until the first `429`, the f
 <td width="50%">
 </td>
 </tr>
+<tr>
+<td width="50%">
+<a href="docs/images/live-view.png"><img src="docs/images/live-view.png" alt="Live view with real cursor" /></a>
+<br/><sub><b>Live view</b> — real-time stream, real cursor, trusted click/drag/typing</sub>
+</td>
+<td width="50%"></td>
+</tr>
 </table>
 
 <p align="center"><img src="docs/images/overview-mobile.png" alt="Mobile layout" width="300" /><br/>
@@ -179,6 +186,7 @@ This is the heart of the project: **accounts are isolated execution slots, not r
 | **Session** | saved to `data/accounts/<id>/gateway/auth/session.json` by **Save Session**; survives restarts and idle shutdown |
 | **Logs** | `data/accounts/<id>/worker.log` (token/password redaction on read) |
 | **Workspace** | `data/accounts/<id>/gateway/` — a private copy of the gateway sources per account |
+| **Live view** | real-time CDP screencast inside the worker: real cursor, click/drag/wheel/typing as trusted input, FPS+latency badges, classic-snapshot fallback; no extra ports, no VNC server |
 | **Plan awareness** | reads the real plan from ChatGPT's own account API: Plus/Pro/Free, renewal/cancellation dates, days left, will-renew; `GET /api/accounts/<id>/plan`, `Refresh plan` in the dialog, health counters `accounts_free_plan`/`accounts_plan_expiring`, refreshed every 6 h |
 | **Project (optional)** | a per-account **ChatGPT project URL**: new generation chats open inside that project (e.g. *Ninja Image Hub*) instead of the normal chat list — guarded gateway patch, applied on worker start |
 
@@ -512,7 +520,7 @@ Guardrails:
 ## Verification
 
 ```bash
-python -m pytest -q                     # 115 passed, 1 skipped  (~96 s)
+python -m pytest -q                     # 117 passed, 1 skipped  (~96 s)
 node --test tests/frontend.test.mjs     # 6 passed
 node --check frontend/app.js            # + all modules + preview/demo.js
 python scripts/doctor.py                # exit 0 = ready

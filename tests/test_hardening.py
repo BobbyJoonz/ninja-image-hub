@@ -1110,6 +1110,50 @@ def test_identity_verify_marks_expected_account_verified(loaded, monkeypatch):
     assert row["identity_workspace"] == "ws-9"
 
 
+
+def test_live_view_patch_is_idempotent_and_skips_unknown_upstream(tmp_path):
+    from hub.workers import _patch_live_view
+
+    worker = tmp_path / "gateway"
+    (worker / "src" / "routes").mkdir(parents=True)
+    login = worker / "src" / "routes" / "login.js"
+    login.write_text("module.exports = router;\n", encoding="utf-8")
+    assert _patch_live_view(worker) is True
+    body = login.read_text(encoding="utf-8")
+    assert "/login/live" in body and "/login/input" in body
+    assert "Page.startScreencast" in body and "Input.dispatchMouseEvent" in body
+    assert _patch_live_view(worker) is False
+
+    login.write_text("// upstream without the router anchor\n", encoding="utf-8")
+    assert _patch_live_view(worker) is False
+    assert login.read_text(encoding="utf-8") == "// upstream without the router anchor\n"
+
+
+def test_live_view_page_and_input_endpoint(loaded):
+    client, _ = loaded
+    h = auth(client)
+    acc = client.post(
+        "/api/accounts", json={"name": "Live", "autostart": False}, headers=h
+    ).json()
+    page = client.get(f"/accounts/{acc['id']}/live")
+    assert page.status_code == 200, page.text
+    for marker in (
+        "url('/live')",
+        "postJson('/input'",
+        "createImageBitmap",
+        "pointermove",
+        "fps",
+        "x-csrf-token",
+        "Save Session",
+    ):
+        assert marker in page.text, marker
+    # Empty input batch is valid and forwarded nowhere.
+    res = client.post(
+        f"/api/accounts/{acc['id']}/remote/input", json={"events": []}, headers=h
+    )
+    assert res.status_code == 200 and res.json()["applied"] == 0
+
+
 def test_worker_command_gives_every_linux_worker_its_own_xvfb():
     """A headed browser on a server needs a virtual display — one per worker, never shared."""
     from hub.workers import display_mode, worker_command

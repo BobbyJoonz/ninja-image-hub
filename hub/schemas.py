@@ -42,6 +42,10 @@ class GenerateBody(BaseModel):
     idempotency_key: str | None = Field(default=None, min_length=8, max_length=128)
 
 
+class LiveInput(BaseModel):
+    events: list[dict] = Field(default_factory=list, max_length=200)
+
+
 class LoginClick(BaseModel):
     # The worker viewport is not fixed (Playwright default vs Xvfb screen), so allow the
     # full range and let the client scale by the screenshot's real pixel size.
