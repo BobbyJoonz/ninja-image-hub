@@ -1025,6 +1025,91 @@ def test_plan_merge_prefers_workspace_business_over_personal_free():
     assert merged["workspace_id"] == "ws-1"
 
 
+
+def test_plan_settings_parser_reads_email():
+    from hub.plans import parse_settings
+
+    plan = parse_settings(
+        {
+            "page": {
+                "workspaceId": "ws-1",
+                "text": "Account\nName\nLINA\nEmail\nuser@example.com\nPlan\nBusiness",
+            }
+        }
+    )
+    assert plan["email"] == "user@example.com"
+    assert plan["workspace_id"] == "ws-1"
+
+
+def test_identity_verify_flags_mismatch_and_confirms(loaded, monkeypatch):
+    """Auto-login must prove who signed in; a different e-mail needs explicit confirmation."""
+    client, ctx = loaded
+    h = auth(client)
+    acc = client.post(
+        "/api/accounts",
+        json={
+            "name": "Who",
+            "autostart": False,
+            "email_label": "expected@example.com",
+        },
+        headers=h,
+    ).json()
+
+    monkeypatch.setattr(
+        ctx,
+        "plan_snapshot",
+        lambda account: {
+            "plan": "free",
+            "label": "Free",
+            "checked_at": "2026-01-01T00:00:00+00:00",
+            "identity": {
+                "email": "other@example.com",
+                "workspace": "ws-1",
+                "checked_at": "2026-01-01T00:00:00+00:00",
+            },
+        },
+        raising=False,
+    )
+
+    res = client.post(f"/api/accounts/{acc['id']}/identity/verify", headers=h)
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["identity_email"] == "other@example.com"
+    assert body["identity_state"] == "mismatch"
+
+    confirmed = client.post(f"/api/accounts/{acc['id']}/identity/confirm", headers=h)
+    assert confirmed.status_code == 200, confirmed.text
+    assert confirmed.json()["identity_state"] == "confirmed"
+
+
+def test_identity_verify_marks_expected_account_verified(loaded, monkeypatch):
+    client, ctx = loaded
+    h = auth(client)
+    acc = client.post(
+        "/api/accounts",
+        json={"name": "Right", "autostart": False, "email_label": "right@example.com"},
+        headers=h,
+    ).json()
+    monkeypatch.setattr(
+        ctx,
+        "plan_snapshot",
+        lambda account: {
+            "plan": "business",
+            "identity": {
+                "email": "RIGHT@example.com",
+                "workspace": "ws-9",
+                "checked_at": "2026-01-01T00:00:00+00:00",
+            },
+        },
+        raising=False,
+    )
+    res = client.post(f"/api/accounts/{acc['id']}/identity/verify", headers=h)
+    assert res.status_code == 200
+    row = res.json()
+    assert row["identity_state"] == "verified"
+    assert row["identity_workspace"] == "ws-9"
+
+
 def test_worker_command_gives_every_linux_worker_its_own_xvfb():
     """A headed browser on a server needs a virtual display — one per worker, never shared."""
     from hub.workers import display_mode, worker_command

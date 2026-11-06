@@ -89,6 +89,10 @@ def initialize_database(ctx):
         Column("cooldown_until", String(40)),
         Column("project_url", String(500), nullable=False, default=""),
         Column("plan_meta", String(2000), nullable=False, default=""),
+        Column("identity_email", String(255), nullable=False, default=""),
+        Column("identity_workspace", String(64), nullable=False, default=""),
+        Column("identity_checked_at", String(40), nullable=False, default=""),
+        Column("identity_state", String(20), nullable=False, default="unknown"),
         Column("created_at", String(40), nullable=False),
     )
 
@@ -171,6 +175,10 @@ def initialize_database(ctx):
                 "dispatch_enabled": "INTEGER DEFAULT 1 NOT NULL",
                 "project_url": "VARCHAR(500) DEFAULT '' NOT NULL",
                 "plan_meta": "VARCHAR(2000) DEFAULT '' NOT NULL",
+                "identity_email": "VARCHAR(255) DEFAULT '' NOT NULL",
+                "identity_workspace": "VARCHAR(64) DEFAULT '' NOT NULL",
+                "identity_checked_at": "VARCHAR(40) DEFAULT '' NOT NULL",
+                "identity_state": "VARCHAR(20) DEFAULT 'unknown' NOT NULL",
             },
             "jobs": {
                 "quality_preference": "VARCHAR(16) DEFAULT 'best' NOT NULL",

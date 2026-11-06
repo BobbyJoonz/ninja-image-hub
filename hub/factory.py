@@ -93,6 +93,8 @@ def create_app():
         "add_account",
         "edit_account",
         "save_detected_plan",
+        "confirm_identity",
+        "mark_identity_verified",
         "start_account",
         "stop_account",
         "ensure_no_running_jobs",
@@ -287,6 +289,14 @@ def create_app():
         "/api/accounts/{account_id}/plan",
         dependencies=[Depends(ctx.require_admin)],
     )(ctx.remote_plan)
+    app.post(
+        "/api/accounts/{account_id}/identity/verify",
+        dependencies=[Depends(ctx.csrf_admin)],
+    )(ctx.mark_identity_verified)
+    app.post(
+        "/api/accounts/{account_id}/identity/confirm",
+        dependencies=[Depends(ctx.csrf_admin)],
+    )(ctx.confirm_identity)
     app.get(
         "/api/accounts/{account_id}/remote/settings",
         dependencies=[Depends(ctx.require_admin)],

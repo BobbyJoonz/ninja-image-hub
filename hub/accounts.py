@@ -167,10 +167,59 @@ def _clean_project_url(value):
     return url
 
 
+def _expected_identity_email(ctx, acc):
+    """Who should be signed in: auto-login e-mail, else a real e-mail label."""
+    try:
+        creds = read_auto_login(ctx, acc["id"]) or {}
+    except Exception:
+        creds = {}
+    email = (creds.get("email") or "").strip()
+    if not email:
+        label = (acc.get("email_label") or "").strip()
+        if "@" in label:
+            email = label
+    return email
+
+
+def _identity_state(acc, identity):
+    email = (identity.get("email") or "").strip()
+    workspace = (identity.get("workspace") or "").strip()
+    if not email:
+        return "unknown"
+    expected = acc.get("identity_expected_email") or ""
+    if not expected:
+        auto = (acc.get("_expected_email") or "").strip()
+        expected = auto
+        if not expected:
+            label = (acc.get("email_label") or "").strip()
+            expected = label if "@" in label else ""
+    if expected and expected.lower() != email.lower():
+        return "mismatch"
+    previous_ws = (acc.get("identity_workspace") or "").strip()
+    if previous_ws and workspace and previous_ws != workspace:
+        return "workspace_changed"
+    if acc.get("identity_state") == "confirmed" and email == (acc.get("identity_email") or ""):
+        return "confirmed"
+    return "verified"
+
+
 def save_detected_plan(ctx, account_id, plan):
-    """Persist the plan ChatGPT reports for this account (no secrets, no cookies)."""
+    """Persist the plan and the detected identity ChatGPT reports for this account."""
     payload = json.dumps(plan or {}, ensure_ascii=False, sort_keys=True)[:1900]
     checked = (plan or {}).get("checked_at")
+    identity = (plan or {}).get("identity") or {}
+    account = ctx.query_account(account_id)
+    state = "unknown"
+    identity_email = ""
+    identity_workspace = ""
+    identity_checked = ""
+    if identity and account:
+        identity_email = (identity.get("email") or "").strip()
+        identity_workspace = (identity.get("workspace") or "").strip()
+        identity_checked = identity.get("checked_at") or checked or ctx.now()
+        account = dict(account)
+        account["_expected_email"] = _expected_identity_email(ctx, account)
+        state = _identity_state(account, identity)
     with ctx.engine.begin() as conn:
         conn.execute(
             update(ctx.accounts)
@@ -179,8 +228,48 @@ def save_detected_plan(ctx, account_id, plan):
                 plan_label=(plan or {}).get("plan") or "unknown",
                 plan_checked_at=checked,
                 plan_meta=payload,
+                identity_email=identity_email or (account or {}).get("identity_email") or "",
+                identity_workspace=identity_workspace
+                or (account or {}).get("identity_workspace")
+                or "",
+                identity_checked_at=identity_checked
+                or (account or {}).get("identity_checked_at")
+                or "",
+                identity_state=state
+                if identity_email
+                else (account or {}).get("identity_state") or "unknown",
             )
         )
+
+
+def confirm_identity(ctx, account_id):
+    """Operator says: yes, this is the account/workspace I intended."""
+    acc = ctx.query_account(account_id)
+    if not acc:
+        raise HTTPException(404, "Account not found.")
+    if not (acc.get("identity_email") or ""):
+        raise HTTPException(409, "No identity detected yet — verify the account first.")
+    with ctx.engine.begin() as conn:
+        conn.execute(
+            update(ctx.accounts)
+            .where(ctx.accounts.c.id == account_id)
+            .values(identity_state="confirmed", identity_checked_at=ctx.now())
+        )
+    ctx.record_audit("account.identity_confirmed", {"account_id": account_id})
+    return ctx.safe_account(ctx.query_account(account_id))
+
+
+def mark_identity_verified(ctx, account_id):
+    acc = ctx.query_account(account_id)
+    if not acc:
+        raise HTTPException(404, "Account not found.")
+    plan = ctx.plan_snapshot(acc)
+    if not plan:
+        raise HTTPException(
+            502, "Could not read the account identity from the browser yet."
+        )
+    ctx.save_detected_plan(account_id, plan)
+    return ctx.safe_account(ctx.query_account(account_id))
 
 
 def add_account(ctx, body: AccountBody):

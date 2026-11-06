@@ -31,6 +31,10 @@ def safe_account(ctx, acc):
             "dispatch_enabled",
             "project_url",
             "plan_meta",
+            "identity_email",
+            "identity_workspace",
+            "identity_checked_at",
+            "identity_state",
         ]
     } | ctx.account_status(acc)
     account["plan"] = plans.summary(acc)
@@ -174,6 +178,34 @@ def settings_plan(ctx, acc):
     return plans.parse_settings(payload)
 
 
+def expected_identity(ctx, acc):
+    """Who should be signed in: auto-login e-mail, else a real e-mail label."""
+    try:
+        creds = _read_auto_login(ctx, acc["id"]) or {}
+    except Exception:
+        creds = {}
+    email = (creds.get("email") or "").strip()
+    if not email:
+        label = (acc.get("email_label") or "").strip()
+        if "@" in label:
+            email = label
+    return {"email": email}
+
+
+def identity_state_for(ctx, acc, detected_email, detected_workspace):
+    """Compare the browser's identity with what this account is supposed to be."""
+    expected = expected_identity(ctx, acc)
+    email = (detected_email or "").strip()
+    if not email:
+        return "unknown"
+    if expected["email"] and expected["email"].lower() != email.lower():
+        return "mismatch"
+    previous = (acc.get("identity_workspace") or "").strip()
+    if previous and detected_workspace and previous != detected_workspace:
+        return "workspace_changed"
+    return "verified"
+
+
 def plan_snapshot(ctx, acc):
     """Read the plan from ChatGPT through the worker (sync; run off the event loop).
 
@@ -197,10 +229,14 @@ def plan_snapshot(ctx, acc):
     except ValueError:
         return None
     base = plans.parse_entitlement(raw)
-    if plans.needs_workspace_check(base):
-        detected = settings_plan(ctx, acc)
-        if detected:
-            base = plans.merge(base, detected)
+    detected = settings_plan(ctx, acc)  # always: identity + workspace plan live here
+    if detected:
+        base = plans.merge(base, detected)
+        base["identity"] = {
+            "email": detected.get("email"),
+            "workspace": detected.get("workspace_id"),
+            "checked_at": detected.get("checked_at"),
+        }
     return base
 
 
@@ -913,11 +949,30 @@ def stop_worker(ctx, account_id):
             h.close()
 
 
+def _identity_after_start(ctx, acc):
+    """Give the worker a moment, then read who actually signed in."""
+    try:
+        for _ in range(120):
+            if ctx.process_state(acc) != "running":
+                return
+            if ctx.upstream_probe(acc):
+                break
+            time.sleep(0.5)
+        plan = plan_snapshot(ctx, acc)
+        if plan:
+            ctx.save_detected_plan(acc["id"], plan)
+    except Exception:
+        pass
+
+
 def start_worker_async(ctx, acc, manual=False):
 
     def start():
         try:
             ctx.start_worker(acc, manual=manual)
+            threading.Thread(
+                target=_identity_after_start, args=(ctx, acc), daemon=True
+            ).start()
         except Exception as e:
             (ctx.DATA / "accounts" / acc["id"]).mkdir(parents=True, exist_ok=True)
             with (ctx.DATA / "accounts" / acc["id"] / "worker.log").open(

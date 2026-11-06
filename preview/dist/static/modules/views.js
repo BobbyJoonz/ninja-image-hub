@@ -96,11 +96,21 @@ export function accountCards(arr, archived = false) {
           <div class="account-fact"><dt>Parallel</dt><dd>${a.parallel_limit || 1} job(s) · ${a.dispatch_enabled ? "dispatching" : "paused"}</dd></div>
           <div class="account-fact"><dt>Project</dt><dd>${esc(project)}</dd></div>
           <div class="account-fact"><dt>Login</dt><dd>${a.auto_login_configured ? "Auto-login saved" : "Manual / remote"}${a.session_blocker ? ` · <span class="chip warn">${esc(a.session_blocker)}</span>` : ""}</dd></div>
+          <div class="account-fact"><dt>Identity</dt><dd>${identityChip(a)}</dd></div>
         </dl>
         <div class="account-buttons">${buttons}</div>
       </article>`;
     })
     .join("");
+}
+
+function identityChip(a) {
+  const state = a.identity_state || "unknown";
+  if (state === "verified" || state === "confirmed")
+    return `<span class="chip good">${state}${a.identity_email ? ` · ${esc(a.identity_email)}` : ""}</span>`;
+  if (state === "mismatch" || state === "workspace_changed")
+    return `<span class="chip warn">${state.replace("_", " ")} — confirm it</span>`;
+  return '<span class="chip muted">not checked yet</span>';
 }
 
 function projectLabel(url) {

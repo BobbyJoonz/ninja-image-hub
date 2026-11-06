@@ -147,6 +147,10 @@ def parse_settings(payload):
     joined = "\n".join(texts)
     if not joined.strip():
         return None
+    email_match = re.search(r"Email\s*\n\s*([^\s@]+@[^\s@]+)", joined, re.IGNORECASE)
+    if email_match is None:
+        email_match = re.search(r"[^\s@]+@[^\s@]+", joined)
+    email = email_match.group(1).strip() if email_match else None
     match = re.search(
         r"\bPlan\b[^\w]{0,40}?(Enterprise|Business|Team|Pro|Plus|Free|Guest)\b",
         joined,
@@ -162,6 +166,7 @@ def parse_settings(payload):
         "source": "chatgpt-settings-page",
         "workspace_id": workspace_id,
         "workspace_plan": plan in ("business", "team", "enterprise"),
+        "email": email,
         "checked_at": __import__("datetime").datetime.now(
             __import__("datetime").timezone.utc
         ).isoformat(),

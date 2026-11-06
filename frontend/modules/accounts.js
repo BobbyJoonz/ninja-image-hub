@@ -5,6 +5,16 @@ import { projectLabel } from "./views.js";
 import { refreshData, switchView } from "./controller.js";
 let loginAccountId = null;
 
+function loginIdentityText(acc) {
+  if (!acc) return "Identity: not checked yet";
+  if (!acc.identity_email)
+    return "Identity: not checked yet — press Verify after signing in.";
+  const state = acc.identity_state || "unknown";
+  return `Identity: ${acc.identity_email}${
+    acc.identity_workspace ? ` · workspace ${String(acc.identity_workspace).slice(0, 8)}` : ""
+  } · ${state.replace("_", " ")}`;
+}
+
 function autoLoginStateText(configured) {
   return configured
     ? "✓ Credentials are configured for this account (password is never shown)."
@@ -29,6 +39,24 @@ export function initLoginDialog() {
       "_blank",
       "noopener,noreferrer",
     );
+  });
+  $("verifyLoginIdentity").addEventListener("click", async () => {
+    if (!loginAccountId) return;
+    const button = $("verifyLoginIdentity");
+    button.disabled = true;
+    try {
+      await api(`/api/accounts/${loginAccountId}/identity/verify`, {
+        method: "POST",
+      });
+      await refreshData(true);
+      const acc = S.accounts.find((x) => x.id === loginAccountId);
+      $("loginIdentity").textContent = loginIdentityText(acc);
+      toast("Identity read from the browser.");
+    } catch (err) {
+      toast(err.message, true);
+    } finally {
+      button.disabled = false;
+    }
   });
   $("refreshLoginStatus").addEventListener("click", async () => {
     await refreshData(true);
@@ -131,6 +159,15 @@ function detailRow(label, valueHtml) {
 }
 
 
+function identityStateChip(state) {
+  state = state || "unknown";
+  if (state === "verified" || state === "confirmed")
+    return `<span class="chip good">${esc(state)}</span>`;
+  if (state === "mismatch" || state === "workspace_changed")
+    return `<span class="chip warn">${esc(state.replace("_", " "))}</span>`;
+  return '<span class="chip muted">not checked yet</span>';
+}
+
 function planSourceText(plan) {
   if (!plan) return "—";
   if (plan.source === "chatgpt-settings-page")
@@ -191,6 +228,17 @@ export function openAccountDetails(id) {
         ${detailRow("Credentials", a.auto_login_configured ? "auto-login saved" : "manual / remote login")}
       </section>
       <section class="detail-section">
+        <h3>Identity</h3>
+        ${detailRow("Signed-in e-mail", a.identity_email ? esc(a.identity_email) : "not checked yet")}
+        ${detailRow("Workspace", a.identity_workspace ? `<code>${esc(String(a.identity_workspace).slice(0, 8))}</code>` : "—")}
+        ${detailRow("Checked", a.identity_checked_at ? esc(fmtDay(a.identity_checked_at)) : "never")}
+        ${detailRow("State", identityStateChip(a.identity_state))}
+        <div class="detail-actions detail-actions-inline">
+          <button type="button" class="btn secondary btn-small" data-detail-action="verify-identity">Verify now</button>
+          <button type="button" class="btn secondary btn-small" data-detail-action="confirm-identity">This is the right account</button>
+        </div>
+      </section>
+      <section class="detail-section detail-section-wide">
         <h3>Runtime</h3>
         ${detailRow("Status", `<span class="pill ${esc(a.runtime)}">● ${esc(a.runtime)}</span>`)}
         ${detailRow("Memory", a.memory_mb == null ? "—" : esc(`${a.memory_mb} MiB`))}
@@ -222,6 +270,22 @@ async function detailAction(action) {
       await refreshData(true);
       openAccountDetails(detailsAccountId);
       return;
+    }
+    if (action === "verify-identity") {
+      await api(`/api/accounts/${detailsAccountId}/identity/verify`, {
+        method: "POST",
+      });
+      toast("Identity read from the browser.");
+      await refreshData(true);
+      return openAccountDetails(detailsAccountId);
+    }
+    if (action === "confirm-identity") {
+      await api(`/api/accounts/${detailsAccountId}/identity/confirm`, {
+        method: "POST",
+      });
+      toast("Identity confirmed for this account.");
+      await refreshData(true);
+      return openAccountDetails(detailsAccountId);
     }
     $("accountDetailsDialog").close();
     if (action === "login") return openLoginDialog(detailsAccountId);
@@ -341,6 +405,7 @@ export function openLoginDialog(id) {
     Boolean(acc.auto_login_configured),
   );
   setLoginHints(acc);
+  $("loginIdentity").textContent = loginIdentityText(acc);
   $("loginDialog").showModal();
   loadAutoLoginState(id);
 }

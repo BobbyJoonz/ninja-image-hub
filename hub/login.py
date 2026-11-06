@@ -1,4 +1,5 @@
 import asyncio
+import threading
 import html
 import json
 
@@ -189,6 +190,23 @@ async def remote_nav(ctx, account_id: str):
     return {"ok": True}
 
 
+def _identity_in_background(ctx, account_id):
+    """After sign-in, read the real e-mail/workspace without blocking the page."""
+
+    def run():
+        try:
+            account = ctx.query_account(account_id)
+            if not account:
+                return
+            plan = ctx.plan_snapshot(account)
+            if plan:
+                ctx.save_detected_plan(account_id, plan)
+        except Exception:
+            pass
+
+    threading.Thread(target=run, daemon=True).start()
+
+
 async def remote_save(ctx, account_id: str):
     """Persist the browser session, then report whether the gateway confirms it.
 
@@ -217,6 +235,7 @@ async def remote_save(ctx, account_id: str):
         ),
         "unknown": "Session state unknown. Send a test job to verify.",
     }
+    _identity_in_background(ctx, account_id)
     return {
         "ok": True,
         "session": session,

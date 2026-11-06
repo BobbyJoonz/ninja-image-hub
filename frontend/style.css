@@ -2705,6 +2705,9 @@ body.booting .stat-value {
 .detail-value a:hover {
   text-decoration: underline;
 }
+.detail-section-wide {
+  grid-column: 1 / -1;
+}
 .detail-actions {
   display: flex;
   flex-wrap: wrap;
@@ -2755,4 +2758,9 @@ body.booting .stat-value {
   border-color: #4a5d74;
   background: #1a2a3d;
   color: #a9bdd2;
+}
+
+.detail-actions-inline {
+  justify-content: flex-start;
+  margin-top: 8px;
 }
