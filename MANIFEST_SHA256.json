@@ -13,7 +13,7 @@
   "deploy/ninja-backup.timer": "1303436997f4e1c819b8789207d47187ead96cdac03cdc2c38b72bc112ac3ff5",
   "deploy/ninja-image-hub.service": "45d87b31a7e9d31b067a8b93f9be917074b9341b2d0bcd3947eef19c10141eb9",
   "deploy/ninja-watch.service": "f26b02bc72b85fd45be3a5c4dbb5b9200930c1da059906f2f6c8341ee766b33c",
-  "docs/ANALYTICS_FA.md": "a9ad44ba5432aaa784dc259f5994326253ebbe4d54b23073fef1397cec43c034",
+  "docs/ANALYTICS_FA.md": "808f6681c977f7e501d9b13b074b3b1db5b01d4156c15f05450dcbf05d69bcc0",
   "docs/ARCHITECTURE_FA.md": "ab6a74c932511dd7a6c2d3efa558c4d89e79f2c85bbc98bdebff4819e6738e31",
   "docs/DEPLOY_LINUX_FA.md": "8c6bad3251567bc1ad4bfc4a1b211fca8835b0f6252dcbe429b6ac5206d5f984",
   "docs/FILE_PIPELINE_FA.md": "81c3649be2acf26cf328abc652399cb42a635f1fc9437e384fc078e2fa55e2ae",
