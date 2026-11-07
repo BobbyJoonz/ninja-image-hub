@@ -1,12 +1,37 @@
-"""Bounded JSON control-plane bodies; large image bytes travel on file routes."""
+"""Bounded request bodies.
+
+Control-plane JSON stays at 64 KiB. Reference-image uploads are the one large-body
+route, so they get their own cap (derived from the live upload settings) and are streamed
+straight to the ASGI app instead of being buffered in memory by this middleware.
+
+The upload route itself re-checks every file and the total before touching the disk, so a
+missing/forged Content-Length cannot exceed the documented limits; this middleware is the
+first cheap gate (413) for honest browsers.
+"""
 
 from starlette.responses import JSONResponse
 
 
 class RequestBodyLimit:
-    def __init__(self, app, max_bytes=64 * 1024):
+    def __init__(
+        self,
+        app,
+        max_bytes=64 * 1024,
+        upload_paths=(),
+        upload_limit=None,
+    ):
         self.app = app
         self.max_bytes = max_bytes
+        self.upload_paths = set(upload_paths or ())
+        self.upload_limit = upload_limit
+
+    def _upload_cap(self):
+        if callable(self.upload_limit):
+            try:
+                return int(self.upload_limit())
+            except Exception:
+                return 0
+        return int(self.upload_limit or 0)
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http" or scope.get("method") not in (
@@ -14,6 +39,28 @@ class RequestBodyLimit:
             "PATCH",
             "PUT",
         ):
+            return await self.app(scope, receive, send)
+
+        path = scope.get("path", "")
+        if path in self.upload_paths:
+            cap = self._upload_cap()
+            headers = dict(scope.get("headers", []))
+            if cap > 0:
+                try:
+                    declared = int(headers.get(b"content-length", b"0"))
+                except ValueError:
+                    return await JSONResponse(
+                        {"detail": "Invalid content length."}, status_code=400
+                    )(scope, receive, send)
+                if declared > cap:
+                    return await JSONResponse(
+                        {
+                            "detail": f"Upload exceeds the {cap // (1024 * 1024)} MiB request limit."
+                        },
+                        status_code=413,
+                    )(scope, receive, send)
+            # Stream: Starlette spools each part to disk; the route enforces the real
+            # per-file and total limits before storing anything.
             return await self.app(scope, receive, send)
 
         async def reject():

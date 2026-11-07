@@ -13,13 +13,26 @@ class ResponseBudgetError(Exception):
     """Submission may have succeeded; the outcome must remain unknown."""
 
 
-def request_generation(url, secret, payload, n):
+def request_generation(url, secret, payload, n, files=None):
+    """POST a generation request.
+
+    ``files`` is an optional list of httpx multipart file tuples for reference images:
+    ``[("reference_images", (filename, fileobj, mime)), ...]``. When present the gateway
+    receives multipart/form-data (its /v1/images/generations accepts this and the UI
+    uploads each file into the composer); otherwise the request stays plain JSON.
+    """
+    request_kwargs = {"json": payload}
+    if files:
+        request_kwargs = {
+            "data": {key: str(value) for key, value in payload.items()},
+            "files": files,
+        }
     with httpx.Client(
         trust_env=False,
-        timeout=httpx.Timeout(read=720.0 * n, connect=10, write=30, pool=10),
+        timeout=httpx.Timeout(read=720.0 * n, connect=10, write=120, pool=10),
     ) as client:
         with client.stream(
-            "POST", url, headers={"Authorization": "Bearer " + secret}, json=payload
+            "POST", url, headers={"Authorization": "Bearer " + secret}, **request_kwargs
         ) as response:
             status = response.status_code
             headers = dict(response.headers)

@@ -22,6 +22,14 @@ def queue_image(ctx, body: GenerateBody):
         not re.fullmatch("[A-Za-z0-9][A-Za-z0-9._:-]{7,127}", body.idempotency_key)
     ):
         raise HTTPException(422, "Invalid idempotency key (8..128 safe characters).")
+    upload = None
+    if body.upload_id:
+        upload = ctx.load_upload(body.upload_id)
+        if not upload:
+            raise HTTPException(
+                422,
+                "Reference upload not found or expired. Upload the images again.",
+            )
     with ctx.account_mutation_locks.setdefault(body.account_id, threading.RLock()):
         with ctx.queue_guard:
             acc = ctx.query_account(body.account_id)
@@ -49,6 +57,8 @@ def queue_image(ctx, body: GenerateBody):
                                 existing["quality_preference"]
                                 != body.quality_preference,
                                 (existing["n"] or 1) != body.n,
+                                (existing["reference_upload_id"] or None)
+                                != (body.upload_id or None),
                             )
                         ):
                             raise HTTPException(
@@ -82,6 +92,9 @@ def queue_image(ctx, body: GenerateBody):
                             quality_preference=body.quality_preference,
                             n=body.n,
                             idempotency_key=body.idempotency_key,
+                            reference_upload_id=body.upload_id,
+                            reference_count=int((upload or {}).get("count") or 0)
+                            or None,
                             status="queued",
                             created_at=ctx.now(),
                         )
@@ -180,6 +193,8 @@ def serialize_job(ctx, row, agent=False, image_rows=None):
             "thinking_verified",
             "thinking_fallback",
             "thinking_mixed",
+            "reference_upload_id",
+            "reference_count",
         ]
     } | {
         "images": outputs,

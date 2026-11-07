@@ -132,3 +132,25 @@ v0.7.0 یک انتشار **سخت‌سازی + بهره‌برداری** است�
 **اعداد تست:** `pytest` → **۱۱۲ passed، ۱ skipped**؛ `node --test` → **۶ pass**.
 
 **تأیید با اجرای واقعی (۶ نوامبر ۲۰۲۶):** یک Job واقعی روی اکانت متصل ( single small blue dot..., n=1) در **۸۱ ثانیه** completed شد و Gateway گزارش داد 	hinking_requested=high, 	hinking_applied=high, 	hinking_verified=1, بدون fallback؛ badge در Jobs «High ✓» بود و effort_below_requested_24h=0 ماند. Job آزمایشی بعد از ثبت شاهد پاک شد. شرط باقی‌مانده: اگر اکانت/پلن سطح High را از دست بدهد، هشدار ۲۴ ساعته (watch) و badge «High → ...» آن را نشان می‌دهد.
+
+
+## v0.9.0 — تصاویر مرجع (Reference images)
+
+| مورد | پیاده‌سازی | تست |
+|---|---|---|
+| آپلود امن | `hub/uploads.py` + `POST /api/uploads` و `/v1/uploads`؛ magic-byte، decode، pixel cap، animated-reject، sha256، mode 0600 | ۱۱ تست: فرمت‌ها، مسیر traversal، خرابی، محدودیت‌ها، CSRF/agent |
+| اعمال محدودیت | per-file/total/count از تنظیمات زنده + سقف middleware فقط روی مسیر آپلود | 413/415/422 و TestClient سرریز |
+| اتصال به Job | `upload_id` در idempotency fingerprint؛ ستون‌های reference_upload_id/count | تست dedup + 409 برای upload متفاوت |
+| ارسال به Gateway | multipart `reference_images` فقط وقتی مرجع هست؛ مسیر بدون مرجع همان JSON قبلی | تست E2E: دو فایل در multipart، prompt/thinking_mode، job completed |
+| چرخهٔ عمر | حذف با terminal، نگه‌داشتن برای unknown، sweep ساعتی با aging و pin بودن Job فعال | ۲ تست: unknown keep + sweep age/usage |
+| UI | drag/drop، chips، اعتبارسنجی سمت مرورگر، upload قبل از queue | تست UI contract + اسکرین‌شات واقعی |
+| امنیت/دیسک | آپلود فقط admin+CSRF یا Bearer؛ رد 507 در دیسک کم؛ بکاپ شامل نمی‌شود | تست limits + backup exclusion |
+
+**اعداد تست:** `pytest` → **۱۲۸ passed، ۱ skipped**؛ `node --test` → **۶ pass**.
+
+**اثبات زنده (۷ نوامبر ۲۰۲۶):** دو تصویر مرجع (۵٬۶۹۳ بایت) آپلود شد و یک Job واقعی در **۶۳ ثانیه**
+`completed` شد؛ `reference_count=2`، `thinking=high/verified=1`، خروجی در گالری ثبت و سپس پاک شد.
+
+**محدودیت صادقانه:** این قابلیت «هر فایلی» را نمی‌پذیرد؛ فقط تصویر (PNG/JPEG/WebP) چون
+مسیر تصویرسازی OpenAI ورودی متنی/PDF را به‌عنوان مرجع نمی‌پزدازد. سقف‌ها از جمع سه محدودیت
+رسمی/فنی می‌آید و در Settings قابل تنظیم است، ولی بالاتر از سقف Gateway امن نیست.

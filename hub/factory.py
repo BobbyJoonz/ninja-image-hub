@@ -22,6 +22,7 @@ from . import (
     scheduler,
     jobs,
     system,
+    uploads,
 )
 import os
 import threading
@@ -174,6 +175,14 @@ def create_app():
     for name in ("settings", "health"):
         setattr(ctx, name, partial(getattr(system, name), ctx))
     ctx._run_maintenance = partial(maintenance.run_maintenance, ctx)
+    for name in (
+        "create_upload",
+        "delete_upload",
+        "load_upload",
+        "release_upload",
+        "sweep_uploads",
+    ):
+        setattr(ctx, name, partial(getattr(uploads, name), ctx))
     ctx.ProviderLimit = scheduler.ProviderLimit
     ctx.LOGIN_ACTIONS = {"screenshot", "click", "type", "key", "navigate", "save"}
 
@@ -188,13 +197,18 @@ def create_app():
 
     app = FastAPI(
         title="Ninja Image Hub",
-        version="0.8.0",
+        version="0.9.0",
         docs_url=None,
         redoc_url=None,
         lifespan=lifespan,
     )
     app.state.hub = ctx
-    app.add_middleware(RequestBodyLimit)
+    app.add_middleware(
+        RequestBodyLimit,
+        upload_paths=("/api/uploads", "/v1/uploads"),
+        # Header-level cap only; the route enforces per-file/total limits before storing.
+        upload_limit=lambda: (ctx.setting("upload_max_total_mb") + 2) * 1024 * 1024,
+    )
     app.add_middleware(
         SessionMiddleware,
         secret_key=ctx.SESSION_SECRET,
@@ -357,6 +371,19 @@ def create_app():
     app.get("/v1/images/{job_id}", dependencies=[Depends(ctx.require_agent)])(
         ctx.agent_image_download
     )
+    app.post(
+        "/api/uploads",
+        dependencies=[Depends(ctx.csrf_admin)],
+        status_code=201,
+    )(ctx.create_upload)
+    app.delete("/api/uploads/{upload_id}", dependencies=[Depends(ctx.csrf_admin)])(
+        ctx.delete_upload
+    )
+    app.post(
+        "/v1/uploads",
+        dependencies=[Depends(ctx.require_agent)],
+        status_code=201,
+    )(ctx.create_upload)
     app.post("/api/generate", dependencies=[Depends(ctx.csrf_admin)], status_code=202)(
         ctx.generate
     )

@@ -40,6 +40,11 @@ class GenerateBody(BaseModel):
     quality_preference: str = "best"
     n: int = Field(default=1, ge=1, le=10)
     idempotency_key: str | None = Field(default=None, min_length=8, max_length=128)
+    # Reference images uploaded through POST /api/uploads (or /v1/uploads).
+    upload_id: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    )
 
 
 class LiveInput(BaseModel):
@@ -76,6 +81,10 @@ class ControlUpdate(BaseModel):
     export_retention_hours: int | None = Field(default=None, ge=0, le=8760)
     worker_log_max_mb: int | None = Field(default=None, ge=0, le=1024)
     min_free_disk_mb: int | None = Field(default=None, ge=0, le=1048576)
+    upload_max_files: int | None = Field(default=None, ge=1, le=10)
+    upload_max_file_mb: int | None = Field(default=None, ge=1, le=50)
+    upload_max_total_mb: int | None = Field(default=None, ge=1, le=200)
+    upload_retention_hours: int | None = Field(default=None, ge=0, le=720)
     thinking_effort: Literal[
         "high", "extra_high", "medium", "instant", "pro"
     ] | None = None

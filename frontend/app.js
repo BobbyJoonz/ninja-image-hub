@@ -1,6 +1,6 @@
 import { S } from "./modules/state.js";
-import { $, toast, uniqueId } from "./modules/dom.js";
-import { api } from "./modules/api.js";
+import { $, toast, uniqueId, uiIcon } from "./modules/dom.js";
+import { api, apiUpload } from "./modules/api.js";
 import {
   showAuth,
   showApp,
@@ -133,6 +133,135 @@ document.querySelectorAll("[data-ratio]").forEach((b) => {
 $("genPrompt").addEventListener("input", () => {
   $("charCount").textContent = $("genPrompt").value.length + " / 4000";
 });
+
+// ---------------------------------------------------------------- reference images
+const fileInput = $("genFiles");
+const fileDrop = $("fileDrop");
+const fileChips = $("fileChips");
+
+function uploadLimits() {
+  return (
+    S.settings.upload_limits || {
+      max_files: 10,
+      max_file_mb: 20,
+      max_total_mb: 50,
+      allowed_types: ["image/png", "image/jpeg", "image/webp"],
+    }
+  );
+}
+
+function humanBytes(bytes) {
+  if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + " MiB";
+  return Math.max(1, Math.round(bytes / 1024)) + " KiB";
+}
+
+function clearReferenceFiles() {
+  for (const file of S.referenceFiles) {
+    if (file.previewUrl) URL.revokeObjectURL(file.previewUrl);
+  }
+  S.referenceFiles = [];
+  if (fileInput) fileInput.value = "";
+  renderFileChips();
+}
+
+function renderFileChips() {
+  if (!fileChips) return;
+  fileChips.innerHTML = S.referenceFiles
+    .map(
+      (file, index) =>
+        `<span class="file-chip">${
+          file.previewUrl
+            ? `<img src="${file.previewUrl}" alt="" width="34" height="34" />`
+            : ""
+        }<span class="file-meta"><strong title="${escAttr(file.name)}">${escAttr(file.name)}</strong><small>${humanBytes(file.size)}</small></span><button type="button" data-file-index="${index}" aria-label="Remove ${escAttr(file.name)}">${uiIcon("x")}</button></span>`,
+    )
+    .join("");
+}
+
+function escAttr(value) {
+  return String(value ?? "").replace(
+    /[&<>"']/g,
+    (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
+  );
+}
+
+function validateSelection(files) {
+  const caps = uploadLimits();
+  if (files.length > caps.max_files)
+    return `Attach at most ${caps.max_files} images per request.`;
+  let total = 0;
+  for (const file of files) {
+    const type = (file.type || "").toLowerCase();
+    const allowed =
+      caps.allowed_types.includes(type) ||
+      /\.(png|jpe?g|webp)$/i.test(file.name || "");
+    if (!allowed)
+      return `${file.name}: only PNG, JPEG or WebP images are supported.`;
+    if (file.size > caps.max_file_mb * 1024 * 1024)
+      return `${file.name}: larger than the ${caps.max_file_mb} MiB per-file limit.`;
+    if (file.size === 0) return `${file.name}: the file is empty.`;
+    total += file.size;
+  }
+  if (total > caps.max_total_mb * 1024 * 1024)
+    return `Attachments exceed the ${caps.max_total_mb} MiB total limit.`;
+  return "";
+}
+
+function addReferenceFiles(list) {
+  const merged = [...S.referenceFiles];
+  for (const file of list) {
+    if (!merged.some((f) => f.name === file.name && f.size === file.size)) {
+      file.previewUrl = URL.createObjectURL(file);
+      merged.push(file);
+    }
+  }
+  const error = validateSelection(merged);
+  if (error) {
+    toast(error, true);
+    for (const file of merged) {
+      if (!S.referenceFiles.includes(file) && file.previewUrl)
+        URL.revokeObjectURL(file.previewUrl);
+    }
+    return;
+  }
+  S.referenceFiles = merged;
+  renderFileChips();
+}
+
+if (fileInput) {
+  fileInput.addEventListener("change", () => {
+    addReferenceFiles([...fileInput.files]);
+    fileInput.value = "";
+  });
+}
+if (fileDrop) {
+  ["dragenter", "dragover"].forEach((name) =>
+    fileDrop.addEventListener(name, (event) => {
+      event.preventDefault();
+      fileDrop.classList.add("dragover");
+    }),
+  );
+  ["dragleave", "drop"].forEach((name) =>
+    fileDrop.addEventListener(name, (event) => {
+      event.preventDefault();
+      fileDrop.classList.remove("dragover");
+    }),
+  );
+  fileDrop.addEventListener("drop", (event) => {
+    addReferenceFiles([...(event.dataTransfer?.files || [])]);
+  });
+}
+if (fileChips) {
+  fileChips.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-file-index]");
+    if (!button) return;
+    const index = Number(button.dataset.fileIndex);
+    const [removed] = S.referenceFiles.splice(index, 1);
+    if (removed?.previewUrl) URL.revokeObjectURL(removed.previewUrl);
+    renderFileChips();
+  });
+}
 // An ambiguous submission (network drop, timeout) must be retried with the SAME
 // idempotency key. Keeping it only in memory lost the key on reload, so a retry minted
 // a new key and produced a duplicate job. sessionStorage survives a reload in this tab.
@@ -156,6 +285,7 @@ function savePendingGeneration(value) {
 $("generateForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   const button = $("generateBtn");
+  const idleMarkup = button.innerHTML;
   button.disabled = true;
   const payload = {
     account_id: $("genAccount").value,
@@ -164,23 +294,46 @@ $("generateForm").addEventListener("submit", async (e) => {
     quality_preference: $("qualityPreference").value,
     n: Number($("genCount").value),
   };
-  const fingerprint = JSON.stringify(payload);
+  const fileSignature = S.referenceFiles
+    .map((file) => `${file.name}:${file.size}:${file.lastModified}`)
+    .join("|");
+  const fingerprint = JSON.stringify({ ...payload, files: fileSignature });
   S.pendingGeneration = S.pendingGeneration || loadPendingGeneration();
   if (S.pendingGeneration?.fingerprint !== fingerprint)
-    S.pendingGeneration = { fingerprint, key: "ui-" + uniqueId() };
+    S.pendingGeneration = { fingerprint, key: "ui-" + uniqueId(), uploadId: null };
   savePendingGeneration(S.pendingGeneration);
   try {
+    let uploadId = S.pendingGeneration.uploadId;
+    if (S.referenceFiles.length && !uploadId) {
+      button.innerHTML = `Uploading ${S.referenceFiles.length} image(s)…`;
+      const form = new FormData();
+      for (const file of S.referenceFiles) form.append("files", file);
+      const uploaded = await apiUpload("/api/uploads", form);
+      uploadId = uploaded.upload_id;
+      S.pendingGeneration.uploadId = uploadId;
+      savePendingGeneration(S.pendingGeneration);
+      button.innerHTML = "Queueing image job…";
+    } else if (S.referenceFiles.length) {
+      button.innerHTML = "Queueing image job…";
+    }
     const job = await api("/api/generate", {
       method: "POST",
       body: JSON.stringify({
         ...payload,
+        ...(uploadId ? { upload_id: uploadId } : {}),
         idempotency_key: S.pendingGeneration.key,
       }),
     });
     S.pendingGeneration = null;
     savePendingGeneration(null);
     S.latestJobId = job.id;
-    toast("Image job queued.");
+    const count = S.referenceFiles.length;
+    clearReferenceFiles();
+    toast(
+      count
+        ? `Image job queued with ${count} reference image(s).`
+        : "Image job queued.",
+    );
     await refreshData();
   } catch (err) {
     toast(
@@ -189,6 +342,7 @@ $("generateForm").addEventListener("submit", async (e) => {
     );
   } finally {
     button.disabled = false;
+    button.innerHTML = idleMarkup;
   }
 });
 document.querySelectorAll("[data-hours]").forEach((button) => {
@@ -219,9 +373,10 @@ $("controlForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   const form = e.currentTarget;
   if (!form.reportValidity()) return;
-  const payload = Object.fromEntries(
-    [...new FormData(form)].map(([k, v]) => [k, Number(v)]),
-  );
+  const payload = {};
+  for (const [key, value] of new FormData(form)) {
+    payload[key] = key === "thinking_effort" ? String(value) : Number(value);
+  }
   const btn = $("saveControl");
   btn.disabled = true;
   try {

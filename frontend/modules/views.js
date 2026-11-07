@@ -42,6 +42,11 @@ export function renderAll() {
       active[0];
     $("genAccount").value = preferred.id;
   }
+  const uploadCaps = S.settings.upload_limits;
+  if (uploadCaps && $("fileLimits"))
+    $("fileLimits").textContent =
+      `PNG · JPEG · WebP · up to ${uploadCaps.max_files} images · ` +
+      `${uploadCaps.max_file_mb} MiB each · ${uploadCaps.max_total_mb} MiB total`;
   if ($("queueNotice"))
     $("queueNotice").textContent =
       `Queue: ${S.queue.queued || 0} waiting · ${S.queue.running || 0}/${S.queue.max_global_inflight || "?"} dispatched · ${S.queue.completed || 0} completed · ${S.queue.partial || 0} partial · ${S.queue.unknown || 0} unknown. Account cooldowns and provider quotas are respected.`;
@@ -218,7 +223,7 @@ export function renderJobs() {
                   : ""
               }</span>`
             : "";
-          return `<tr><td data-label="JOB / PROMPT"><div class="job-prompt" title="${esc(j.prompt)}">${esc(trunc(j.prompt, 90))}</div><div class="job-id">${esc(j.id.slice(0, 8))}</div></td><td data-label="ACCOUNT">${esc(map[j.account_id] || "Deleted account")}</td><td data-label="STATUS">${statusPill(j.status)}<div class="job-id">${j.image_count || 0}/${j.n || 1} images</div>${resolution}${effortBadge(j)}</td><td data-label="CREATED">${esc(new Date(j.created_at).toLocaleString())}</td><td data-label="OUTPUT">${j.image_url ? `<a href="${j.image_url}" target="_blank" rel="noopener">${uiIcon("external")} View ${j.image_count || 1} image(s)</a>` : esc(trunc(j.error || "—", 60))}</td><td data-label="ACTION">${action}</td></tr>`;
+          return `<tr><td data-label="JOB / PROMPT"><div class="job-prompt" title="${esc(j.prompt)}">${esc(trunc(j.prompt, 90))}</div><div class="job-id">${esc(j.id.slice(0, 8))}${j.reference_count ? " · " + j.reference_count + " ref image(s)" : ""}</div></td><td data-label="ACCOUNT">${esc(map[j.account_id] || "Deleted account")}</td><td data-label="STATUS">${statusPill(j.status)}<div class="job-id">${j.image_count || 0}/${j.n || 1} images</div>${resolution}${effortBadge(j)}</td><td data-label="CREATED">${esc(new Date(j.created_at).toLocaleString())}</td><td data-label="OUTPUT">${j.image_url ? `<a href="${j.image_url}" target="_blank" rel="noopener">${uiIcon("external")} View ${j.image_count || 1} image(s)</a>` : esc(trunc(j.error || "—", 60))}</td><td data-label="ACTION">${action}</td></tr>`;
         })
         .join("")
     : `<tr><td colspan="6" class="jobs-empty">${
@@ -267,6 +272,18 @@ export function renderSettings() {
     ["Export retention", s.export_retention_hours + " hours"],
     ["Worker log limit", s.worker_log_max_mb + " MB"],
     ["Image effort", (s.thinking_effort_label || s.thinking_effort || "High") + (s.effort_below_requested_24h ? " · " + s.effort_below_requested_24h + " fallback(s) in 24h" : "")],
+    [
+      "Reference uploads",
+      s.upload_limits
+        ? `${s.upload_limits.max_files} files · ${s.upload_limits.max_file_mb} MiB each · ${s.upload_limits.max_total_mb} MiB total`
+        : "10 files",
+    ],
+    [
+      "Upload workspace",
+      s.upload_usage
+        ? `${s.upload_usage.count} upload(s) · ${(s.upload_usage.bytes / 1048576).toFixed(1)} MiB`
+        : "—",
+    ],
   ];
   $("settingsList").innerHTML = rows
     .map(

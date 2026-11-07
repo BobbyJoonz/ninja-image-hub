@@ -2764,3 +2764,109 @@ body.booting .stat-value {
   justify-content: flex-start;
   margin-top: 8px;
 }
+
+
+/* ---------- Reference image uploads (Studio) ---------- */
+.file-drop {
+  position: relative;
+  border: 1px dashed #2e4964;
+  background: #0d1c2d;
+  border-radius: 12px;
+  padding: 18px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.file-drop:hover,
+.file-drop.dragover {
+  border-color: #7fbf6a;
+  background: #11241f;
+}
+.file-drop input[type="file"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+.file-drop-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+  color: #9db2c8;
+  font-size: 12px;
+  pointer-events: none;
+}
+.file-drop-inner .icon {
+  width: 22px;
+  height: 22px;
+  color: #7fbf6a;
+}
+.file-drop-inner strong {
+  color: #dceafa;
+}
+.file-drop-inner small {
+  color: #8098b0;
+  font-size: 11px;
+}
+.file-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #2e4964;
+  background: #13253a;
+  border-radius: 9px;
+  padding: 6px 8px;
+  font-size: 11px;
+  color: #c6d7e8;
+  max-width: 100%;
+}
+.file-chip img {
+  width: 34px;
+  height: 34px;
+  object-fit: cover;
+  border-radius: 6px;
+  background: #0b1929;
+}
+.file-chip .file-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.file-chip .file-meta strong {
+  font-size: 11px;
+  font-weight: 600;
+  color: #e2eefb;
+  max-width: 170px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-chip .file-meta small {
+  color: #8aa1b8;
+  font-size: 10.5px;
+}
+.file-chip button {
+  border: 0;
+  background: transparent;
+  color: #9db2c8;
+  cursor: pointer;
+  padding: 2px;
+  display: inline-flex;
+}
+.file-chip button:hover {
+  color: #ffb3b3;
+}
+.file-chip button .icon {
+  width: 14px;
+  height: 14px;
+}

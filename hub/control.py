@@ -125,6 +125,12 @@ def initialize_controls(ctx):
         "export_retention_hours": (24, 0, 8760, "EXPORT_RETENTION_HOURS"),
         "worker_log_max_mb": (20, 0, 1024, "WORKER_LOG_MAX_MB"),
         "min_free_disk_mb": (500, 0, 1048576, "MIN_FREE_DISK_MB"),
+        # Reference-image uploads: provider caps (10 files, PNG/JPEG/WEBP) and the
+        # gateway's 50 MB buffered envelope. Live-editable, enforced server-side.
+        "upload_max_files": (10, 1, 10, "UPLOAD_MAX_FILES"),
+        "upload_max_file_mb": (20, 1, 50, "UPLOAD_MAX_FILE_MB"),
+        "upload_max_total_mb": (50, 1, 200, "UPLOAD_MAX_TOTAL_MB"),
+        "upload_retention_hours": (24, 0, 720, "UPLOAD_RETENTION_HOURS"),
     }
 
     ctx.ENUM_CONTROLS = {

@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, select
 
-from . import effort
+from . import effort, uploads
 
 
 def _disk_free_mb(ctx):
@@ -82,6 +82,9 @@ def settings(ctx):
         "thinking_effort_label": effort.effort_label(ctx.setting("thinking_effort")),
         "effort_below_requested_24h": _effort_counts(ctx)[0],
         "effort_mixed_24h": _effort_counts(ctx)[1],
+        "upload_limits": uploads.limits(ctx),
+        "upload_retention_hours": ctx.setting("upload_retention_hours"),
+        "upload_usage": uploads.usage(ctx),
         "disk_free_mb": _disk_free_mb(ctx),
         "disk_low": _disk_low(ctx),
         "terms_warning": "Unofficial ChatGPT UI automation may violate OpenAI Terms and cause account suspension.",
@@ -114,7 +117,7 @@ def health(ctx):
     disk_low = _disk_low(ctx)
     return {
         "ok": True,
-        "version": "0.8.0",
+        "version": "0.9.0",
         "gateway_installed": ctx.runtime_installed(),
         "accounts": accounts_total,
         "running_workers": alive,

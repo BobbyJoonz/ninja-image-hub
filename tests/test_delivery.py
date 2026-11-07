@@ -235,6 +235,9 @@ def test_json_budget_failure_remains_unknown_without_replay(loaded, monkeypatch)
 
     client, ctx = loaded
     h = auth(client)
+    # Stop the background scheduler BEFORE queueing: this test executes the job by hand
+    # and must not race a real dispatch (which would call request_generation twice).
+    ctx.stop_scheduler()
     account = client.post(
         "/api/accounts", json={"name": "Budget test"}, headers=h
     ).json()
@@ -245,7 +248,6 @@ def test_json_budget_failure_remains_unknown_without_replay(loaded, monkeypatch)
     ).json()["id"]
     monkeypatch.setattr(ctx, "process_state", lambda a: "running")
     monkeypatch.setattr(ctx, "upstream_probe", lambda a: True)
-    ctx.stop_scheduler()
     calls = []
 
     def reject(*args):

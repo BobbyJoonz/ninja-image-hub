@@ -10,7 +10,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Node.js](https://img.shields.io/badge/node-22%2B-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![SQLite](https://img.shields.io/badge/SQLite-WAL-003B57?logo=sqlite&logoColor=white)](https://www.sqlite.org/wal.html)
-[![Tests](https://img.shields.io/badge/tests-117%20passed%20%C2%B7%201%20skipped-2ea043)](#verification)
+[![Tests](https://img.shields.io/badge/tests-128%20passed%20%C2%B7%201%20skipped-2ea043)](#verification)
 [![Accounts](https://img.shields.io/badge/accounts-1%20to%2016-8957e5)](#multi-account-model)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-linux%20%7C%20windows-6e7681)](#quick-start)
@@ -67,6 +67,17 @@ last. The gateway returns what the UI actually selected, and each job stores
 `High ?`. A downgrade is surfaced and counted in `/api/health`
 (`effort_below_requested_24h`) so the watchdog can alert — it is never retried, never
 silently hidden and never turns a saved image into a failure.
+
+**Reference images.** A prompt can carry up to **10 reference images** (PNG/JPEG/WebP)
+straight from Image Studio — drag-and-drop or pick — and the panel forwards them to the
+gateway as multipart `reference_images` next to the prompt, aspect ratio, batch size and
+effort tier. Limits are the conservative intersection of OpenAI's image-input rules
+(10 images, PNG/JPEG/WEBP, ≤ 16 MP per image), the ChatGPT composer (~20 MiB per file) and
+the pinned gateway's 50 MiB buffered envelope: **10 files, 20 MiB each, 50 MiB total**,
+validated by magic bytes server-side and configurable in Operations. Uploads are private
+(`data/uploads/<uuid>/`, mode 0600), never re-encoded, referenced by one job, and deleted
+when that job settles — except `unknown`, which is kept for reconciliation and swept after
+`upload_retention_hours`.
 
 ### Why this exists
 
@@ -368,6 +379,10 @@ All of these are **live** unless marked *restart*. Every change requires admin s
 | `provider_cooldown_minutes` | `30` | 1–240 | next tick | Minimum cooldown after a rate limit; a longer `Retry-After` always wins |
 | `idle_worker_shutdown_minutes` | `20` | 0–1440 | next tick | Stop an idle browser; `0` = always-on |
 | `thinking_effort` | `high` | `high` / `extra_high` / `medium` / `instant` / `pro` | next job | Reasoning tier requested for **every** image; the applied tier is verified and recorded per job |
+| `upload_max_files` | `10` | 1–10 | next upload | Reference images per request (provider cap) |
+| `upload_max_file_mb` | `20` | 1–50 | next upload | Per-file cap; 20 matches the ChatGPT composer, 50 the gateway envelope |
+| `upload_max_total_mb` | `50` | 1–200 | next upload | Combined bytes per upload; above ~50 MiB raises gateway RAM use |
+| `upload_retention_hours` | `24` | 0–720 | hourly sweep | Delete orphaned upload workspaces; `0` disables. Terminal jobs clean up immediately |
 | `min_free_memory_mb` | `600` | 0–65536 | next start | Refuse to start a browser when free RAM is below this; `0` disables the guard |
 | `dispatch_paused` | `0` | 0/1 | next tick | Pause **new** dispatch only; running jobs finish, queued jobs are kept |
 
@@ -383,7 +398,7 @@ All of these are **live** unless marked *restart*. Every change requires admin s
 | `COOKIE_SECURE` | optional | `true` when the panel is behind HTTPS |
 | `DATA_DIR` | optional | Data root (default `./data`) |
 | `DATABASE_URL` | optional | SQLite by default; PostgreSQL is *not* validated |
-| `GLOBAL_MAX_INFLIGHT`, `GATEWAY_MAX_TABS`, `MAX_PENDING_JOBS`, `MAX_BATCH_IMAGES`, `PROVIDER_COOLDOWN_MINUTES`, `MAX_RUNNING_ACCOUNTS`, `IDLE_WORKER_SHUTDOWN_MINUTES`, `MIN_FREE_MEMORY_MB`, `PREVIEW_RETENTION_DAYS`, `EXPORT_RETENTION_HOURS`, `WORKER_LOG_MAX_MB`, `MIN_FREE_DISK_MB`, `THINKING_EFFORT` | optional | Seed values for a **fresh** database only; afterwards the DB/panel wins |
+| `GLOBAL_MAX_INFLIGHT`, `GATEWAY_MAX_TABS`, `MAX_PENDING_JOBS`, `MAX_BATCH_IMAGES`, `PROVIDER_COOLDOWN_MINUTES`, `MAX_RUNNING_ACCOUNTS`, `IDLE_WORKER_SHUTDOWN_MINUTES`, `MIN_FREE_MEMORY_MB`, `PREVIEW_RETENTION_DAYS`, `EXPORT_RETENTION_HOURS`, `WORKER_LOG_MAX_MB`, `MIN_FREE_DISK_MB`, `THINKING_EFFORT`, `UPLOAD_MAX_FILES`, `UPLOAD_MAX_FILE_MB`, `UPLOAD_MAX_TOTAL_MB`, `UPLOAD_RETENTION_HOURS` | optional | Seed values for a **fresh** database only; afterwards the DB/panel wins |
 
 ### C. CLI scripts
 
@@ -414,6 +429,11 @@ All of these are **live** unless marked *restart*. Every change requires admin s
 | ZIP export per job | ≤ 10 files, ≤ 640 MiB, ZIP_STORED, disk-backed |
 | Concurrent preview renders | 2 |
 | Concurrent ZIP exports | 2 |
+| Reference images per job | ≤ 10 (gateway/provider cap) |
+| Reference image format | PNG, JPEG, WebP — validated by magic bytes, not by filename |
+| Reference image size | ≤ 20 MiB and ≤ 16,777,216 pixels each (20 MiB = ChatGPT composer cap, 16 MP = provider input cap) |
+| Reference upload total | ≤ 50 MiB per request (gateway buffers it) |
+| Uploaded files kept | Until the job settles; `unknown` keeps them until `upload_retention_hours` |
 
 ---
 
@@ -438,7 +458,10 @@ All of these are **live** unless marked *restart*. Every change requires admin s
 | `GET /accounts/{id}/login` | admin | Remote-login page (streams the server browser) |
 | `GET /api/accounts/{id}/remote/{init\|screenshot}` | admin | Start/refresh the login session, grab a frame |
 | `POST /api/accounts/{id}/remote/{click\|type\|key\|navigate\|save}` | CSRF | Drive the browser and persist the session |
-| `POST /api/generate` | CSRF | `{account_id, prompt, aspect_ratio, quality_preference, n, idempotency_key?}` → `202` |
+| `POST /api/uploads` | CSRF | multipart `files` (1–10 images) → `201 {upload_id, files, limits}` |
+| `DELETE /api/uploads/{id}` | CSRF | Drop an unused upload (409 while a queued/running job uses it) |
+| `POST /v1/uploads` | Bearer | Same upload for agent automation |
+| `POST /api/generate` | CSRF | `{account_id, prompt, aspect_ratio, quality_preference, n, upload_id?, idempotency_key?}` → `202` |
 | `GET /api/jobs?limit=` | admin | Recent jobs (≤ 200) with image metadata |
 | `GET /api/jobs/{id}` | admin | One job with all outputs |
 | `DELETE /api/jobs/{id}` | CSRF | Cancel queued / delete settled job |
@@ -454,7 +477,7 @@ All of these are **live** unless marked *restart*. Every change requires admin s
 | `PATCH /api/control` | CSRF | Change settings (validated, audited) |
 | `GET /api/control/audit?limit=` | admin | Change history without secrets |
 | `GET /api/settings` | admin | Environment snapshot (gateway, DB, paths) |
-| `POST /v1/images/generations` | Bearer | Agent create — same body as `/api/generate`, returns `202` |
+| `POST /v1/images/generations` | Bearer | Agent create — same body as `/api/generate` (including `upload_id`), returns `202` |
 | `GET /v1/jobs/{id}` | Bearer | Agent job status |
 | `GET /v1/images/{job}[/{pos}]` | Bearer | Agent download |
 | `GET /v1/exports/jobs/{id}.zip` | Bearer | Agent ZIP export |
@@ -466,6 +489,21 @@ curl -s -X POST http://127.0.0.1:8081/api/generate \
   -H "Content-Type: application/json" -H "x-csrf-token: $CSRF" \
   -d '{"account_id":"<id>","prompt":"flat green ninja icon","aspect_ratio":"1:1",
        "quality_preference":"balanced","n":2,"idempotency_key":"batch-2026-11-06-001"}'
+```
+
+Example — upload two references, then generate from them:
+
+```bash
+UP=$(curl -s -X POST http://127.0.0.1:8081/api/uploads \
+  -H "x-csrf-token: $CSRF" \
+  -F "files=@ring.png;type=image/png" -F "files=@square.webp;type=image/webp")
+UPLOAD_ID=$(echo "$UP" | python -c 'import json,sys;print(json.load(sys.stdin)["upload_id"])')
+
+curl -s -X POST http://127.0.0.1:8081/api/generate \
+  -H "Content-Type: application/json" -H "x-csrf-token: $CSRF" \
+  -d "{\"account_id\":\"<id>\",\"prompt\":\"combine both references into one flat icon\",
+       \"aspect_ratio\":\"1:1\",\"n\":1,\"upload_id\":\"$UPLOAD_ID\",
+       \"idempotency_key\":\"refs-2026-11-07-001\"}"
 ```
 
 Example — agent API:
@@ -520,7 +558,7 @@ Guardrails:
 ## Verification
 
 ```bash
-python -m pytest -q                     # 117 passed, 1 skipped  (~96 s)
+python -m pytest -q                     # 128 passed, 1 skipped  (~96 s)
 node --test tests/frontend.test.mjs     # 6 passed
 node --check frontend/app.js            # + all modules + preview/demo.js
 python scripts/doctor.py                # exit 0 = ready

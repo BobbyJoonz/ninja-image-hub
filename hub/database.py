@@ -127,6 +127,9 @@ def initialize_database(ctx):
         Column("thinking_verified", Integer),
         Column("thinking_fallback", String(32)),
         Column("thinking_mixed", Integer),
+        # Reference images attached to this job (one upload, up to 10 files).
+        Column("reference_upload_id", String(36)),
+        Column("reference_count", Integer),
     )
 
     ctx.job_images = Table(
@@ -197,6 +200,8 @@ def initialize_database(ctx):
                 "thinking_verified": "INTEGER",
                 "thinking_fallback": "VARCHAR(32)",
                 "thinking_mixed": "INTEGER",
+                "reference_upload_id": "VARCHAR(36)",
+                "reference_count": "INTEGER",
             },
         }.items():
             current = {c["name"] for c in inspector.get_columns(table_name)}

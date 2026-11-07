@@ -665,6 +665,30 @@
                       style.</small
                     ><span id="charCount">0 / 4000</span>
                   </div>
+                  <label for="genFiles">REFERENCE IMAGES (optional)</label>
+                  <div class="file-drop" id="fileDrop">
+                    <input
+                      id="genFiles"
+                      type="file"
+                      multiple
+                      accept="image/png,image/jpeg,image/webp"
+                      aria-describedby="fileLimits"
+                    />
+                    <div class="file-drop-inner">
+                      <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#lc-image"></use></svg>
+                      <span><strong>Drop images here</strong> or click to choose</span>
+                      <small id="fileLimits"
+                        >PNG · JPEG · WebP · up to 10 images · 20 MiB each ·
+                        50 MiB total</small
+                      >
+                    </div>
+                  </div>
+                  <div id="fileChips" class="file-chips" aria-live="polite"></div>
+                  <p class="fine-print" id="fileHint">
+                    References are attached to the prompt at High effort. Each
+                    generation gets the same images; they are deleted from this
+                    machine when the job settles.
+                  </p>
                   <label>ASPECT RATIO</label>
                   <div
                     class="ratio-group"

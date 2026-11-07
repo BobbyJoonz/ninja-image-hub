@@ -52,6 +52,28 @@ The docs above are the current description. Older versioned documents were remov
 - `thinking_effort` is a validated enum setting seeded by `THINKING_EFFORT`; unknown
   values fall back to the safe default (High), never below it.
 
+## Reference uploads
+
+- Validate every reference before storing it: count ≤ 10, magic bytes in {PNG, JPEG, WEBP},
+  decodable, not animated, ≤ 16,777,216 pixels and within the configured per-file/total
+  limits. Never trust the filename or the client's Content-Type.
+- Preserve the uploaded original bytes exactly; never re-encode, resize or transcode them.
+  Store them privately under `data/uploads/<uuid>/` (mode 0600) with a sha256 manifest and
+  never log their contents.
+- The 64 KiB JSON gate must stay for every other route; upload paths get one explicit cap
+  derived from the live setting, and the route re-checks each file and the total before
+  anything touches disk.
+- A job references exactly one upload; `upload_id` is part of the idempotency fingerprint
+  (same key + different upload → 409). A missing upload is a pre-send failure: fail the job
+  with a clear error, never dispatch without the references.
+- Terminal jobs delete their upload directory; `unknown` keeps it for reconciliation and
+  the hourly sweep removes it after `upload_retention_hours`. The sweep must never touch an
+  upload referenced by a queued/running job. Terminal cleanup must never delete gallery
+  originals.
+- Send references to the gateway as multipart `reference_images` only when present; the
+  no-reference path stays the historical JSON request (tests and integrations patch that
+  signature).
+
 ## File pipeline
 
 - Preserve original bytes; previews are derived and separate. Never substitute a preview for an original download.
@@ -91,7 +113,7 @@ The docs above are the current description. Older versioned documents were remov
 ## Required checks
 
 ```bash
-python -m pytest -q          # 117 passed, 1 skipped (skip = symlink test on unprivileged Windows)
+python -m pytest -q          # 128 passed, 1 skipped (skip = symlink test on unprivileged Windows)
 node --test tests/frontend.test.mjs
 node --check frontend/app.js # plus all frontend modules and preview/demo.js
 python scripts/doctor.py     # exit 0 = ready

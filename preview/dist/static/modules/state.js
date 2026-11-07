@@ -20,4 +20,5 @@ export const S = {
   pendingGeneration: null,
   jobsFilter: "all",
   jobQuery: "",
+  referenceFiles: [],
 };

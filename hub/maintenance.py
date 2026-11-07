@@ -114,6 +114,7 @@ def run_maintenance(ctx):
         ctx.DATA / "gallery", epoch - INCOMING_MAX_AGE_SEC, prefix=".incoming-"
     )
     rotated = _rotate_worker_logs(ctx, log_mb)
+    uploads_removed = ctx.sweep_uploads(int(ctx.setting("upload_retention_hours") or 0))
 
     free_mb = None
     try:
@@ -128,6 +129,7 @@ def run_maintenance(ctx):
         "exports_removed": exports,
         "incoming_removed": incoming,
         "logs_rotated": rotated,
+        "uploads_removed": uploads_removed,
         "disk_free_mb": free_mb,
         "disk_low": disk_low,
         "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),

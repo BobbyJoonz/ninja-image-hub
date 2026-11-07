@@ -24,6 +24,9 @@ MAX_RESTART_ATTEMPTS = 8
 
 def execute_job(ctx, job_id, acc, prompt, aspect, quality_preference, n=1):
     """Run once. No automatic replay after uncertain upstream outcomes."""
+    upload = None
+    upload_id = None
+    handles = []
     try:
         if ctx.process_state(acc) != "running" or not ctx.upstream_probe(acc):
             # Nothing was submitted upstream, so returning the job to the queue is safe.
@@ -37,6 +40,45 @@ def execute_job(ctx, job_id, acc, prompt, aspect, quality_preference, n=1):
             return
         if quality_preference == "best":
             prompt += "\n\nProduction guidance: preserve requested details faithfully; aim for clean edges, intentional composition, readable text when requested, and a polished final result. Do not add unrelated objects."
+        # Reference images: read from the private upload workspace. An expired upload is a
+        # pre-send failure (nothing was submitted), so failing the job is honest and safe.
+        # The upload id is read from the job row so execute_job keeps its historical
+        # signature (tests and callbacks patch it with exactly these arguments).
+        with ctx.engine.connect() as conn:
+            upload_id = conn.execute(
+                select(ctx.jobs.c.reference_upload_id).where(
+                    ctx.jobs.c.id == job_id
+                )
+            ).scalar_one_or_none()
+        files = None
+        if upload_id:
+            upload = ctx.load_upload(upload_id)
+            if not upload:
+                with ctx.engine.begin() as conn:
+                    conn.execute(
+                        update(ctx.jobs)
+                        .where(ctx.jobs.c.id == job_id)
+                        .values(
+                            status="failed",
+                            error="Reference images expired before dispatch; nothing was sent upstream.",
+                            finished_at=ctx.now(),
+                        )
+                    )
+                return
+            files = []
+            for item in upload["files"]:
+                handle = open(item["path"], "rb")
+                handles.append(handle)
+                files.append(
+                    (
+                        "reference_images",
+                        (
+                            item.get("name") or "reference",
+                            handle,
+                            item.get("mime") or "image/png",
+                        ),
+                    )
+                )
         # Reasoning effort is a real ChatGPT web-UI control ("Thinking effort"), not a
         # prompt hint. We always ask for the configured tier (High by default) and read
         # back what the UI actually applied; a downgrade is recorded and surfaced but the
@@ -52,12 +94,15 @@ def execute_job(ctx, job_id, acc, prompt, aspect, quality_preference, n=1):
         if thinking_mode:
             payload["thinking_mode"] = thinking_mode
         try:
-            r = request_generation(
-                ctx.upstream(acc) + "/v1/images/generations",
-                acc["api_secret"],
-                payload,
-                n,
-            )
+            url = ctx.upstream(acc) + "/v1/images/generations"
+            if files:
+                r = request_generation(
+                    url, acc["api_secret"], payload, n, files=files
+                )
+            else:
+                # Keep the no-reference path a plain 4-argument call: existing tests and
+                # integrations monkeypatch request_generation with that signature.
+                r = request_generation(url, acc["api_secret"], payload, n)
         except (
             httpx.ReadTimeout,
             httpx.WriteTimeout,
@@ -211,6 +256,27 @@ def execute_job(ctx, job_id, acc, prompt, aspect, quality_preference, n=1):
                 .values(status="failed", error=str(e)[:350], finished_at=ctx.now())
             )
     finally:
+        for handle in handles:
+            try:
+                handle.close()
+            except OSError:
+                pass
+        if upload_id:
+            try:
+                with ctx.engine.connect() as conn:
+                    state = conn.execute(
+                        select(ctx.jobs.c.status).where(ctx.jobs.c.id == job_id)
+                    ).scalar_one_or_none()
+                if state in (
+                    "completed",
+                    "partial",
+                    "failed",
+                    "rate_limited",
+                    "canceled",
+                ):
+                    ctx.release_upload(upload_id)
+            except Exception:  # noqa: BLE001 - cleanup must never mask the job outcome
+                pass
         with ctx.queue_guard:
             ctx.active_jobs.discard(job_id)
             ctx.active_per_account[acc["id"]] = max(
