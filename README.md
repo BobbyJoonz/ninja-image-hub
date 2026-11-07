@@ -433,6 +433,8 @@ All of these are **live** unless marked *restart*. Every change requires admin s
 | Reference image format | PNG, JPEG, WebP — validated by magic bytes, not by filename |
 | Reference image size | ≤ 20 MiB and ≤ 16,777,216 pixels each (20 MiB = ChatGPT composer cap, 16 MP = provider input cap) |
 | Reference upload total | ≤ 50 MiB per request (gateway buffers it) |
+| Upload request header | `Content-Length` required; chunked multipart is rejected with `411` before parsing |
+| Upload storage | Streamed to disk while hashing — a 50 MiB upload does not sit in RAM; `data/uploads/<uuid>/` is 0700, files 0600 |
 | Uploaded files kept | Until the job settles; `unknown` keeps them until `upload_retention_hours` |
 
 ---
@@ -458,7 +460,7 @@ All of these are **live** unless marked *restart*. Every change requires admin s
 | `GET /accounts/{id}/login` | admin | Remote-login page (streams the server browser) |
 | `GET /api/accounts/{id}/remote/{init\|screenshot}` | admin | Start/refresh the login session, grab a frame |
 | `POST /api/accounts/{id}/remote/{click\|type\|key\|navigate\|save}` | CSRF | Drive the browser and persist the session |
-| `POST /api/uploads` | CSRF | multipart `files` (1–10 images) → `201 {upload_id, files, limits}` |
+| `POST /api/uploads` | CSRF | multipart `files` (1–10 images, `Content-Length` required) → `201 {upload_id, files, limits}` |
 | `DELETE /api/uploads/{id}` | CSRF | Drop an unused upload (409 while a queued/running job uses it) |
 | `POST /v1/uploads` | Bearer | Same upload for agent automation |
 | `POST /api/generate` | CSRF | `{account_id, prompt, aspect_ratio, quality_preference, n, upload_id?, idempotency_key?}` → `202` |
@@ -558,7 +560,7 @@ Guardrails:
 ## Verification
 
 ```bash
-python -m pytest -q                     # 128 passed, 1 skipped  (~96 s)
+python -m pytest -q                     # 137 passed, 1 skipped  (~96 s)
 node --test tests/frontend.test.mjs     # 6 passed
 node --check frontend/app.js            # + all modules + preview/demo.js
 python scripts/doctor.py                # exit 0 = ready

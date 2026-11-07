@@ -2870,3 +2870,8 @@ body.booting .stat-value {
   width: 14px;
   height: 14px;
 }
+
+.file-drop:focus-within {
+  outline: 2px solid #b9f85c;
+  outline-offset: 2px;
+}

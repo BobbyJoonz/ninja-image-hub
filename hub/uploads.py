@@ -11,10 +11,12 @@ Limits are the conservative intersection of:
 Defaults: 10 files · 20 MiB per file · 50 MiB total · 16 MP per image. They are live
 settings and the server enforces them regardless of what the browser sends.
 
-Storage is transient and private: ``data/uploads/<uuid>/`` contains the original bytes
-(never re-encoded), a ``meta.json`` with names/sizes/sha256/dimensions, mode 0600. A
-job references one upload; the directory is removed when the job reaches a terminal
-state, except ``unknown`` (kept for operator reconciliation, swept by retention).
+Storage is transient and private: ``data/uploads/<uuid>/`` (mode 0700) contains the
+original bytes (never re-encoded), a ``meta.json`` with names/sizes/sha256/dimensions and
+a per-file safe multipart name. Files are streamed to disk while hashing, so a 50 MiB
+upload never sits in RAM. A job references one upload; the directory is removed when the
+job reaches a terminal state, except ``unknown`` (kept for operator reconciliation and
+swept by retention).
 """
 
 import hashlib
@@ -35,6 +37,8 @@ MAX_FILE_MB = 20
 MAX_TOTAL_MB = 50
 MAX_PIXELS = 16_777_216
 UPLOAD_ID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+FILE_NAME_RE = re.compile(r"^\d+-[a-f0-9]{12}\.(png|jpg|webp)$")
+INCOMING_RE = re.compile(r"^\.incoming-")
 SUPPORTED = {
     "image/png": ("png", "PNG"),
     "image/jpeg": ("jpg", "JPEG"),
@@ -45,6 +49,7 @@ MAGIC = (
     (b"\xff\xd8\xff", "image/jpeg"),
 )
 SAFE_NAME_RE = re.compile(r"[^A-Za-z0-9._ -]+")
+CHUNK = 1024 * 1024
 
 
 class UploadError(Exception):
@@ -84,22 +89,19 @@ def clean_name(name, fallback):
     return base or fallback
 
 
-def probe_image(data, declared_name="reference"):
-    """Validate one reference image and return its metadata (never re-encodes)."""
-    mime = _sniff_mime(data)
-    if mime is None:
-        raise UploadError(
-            415,
-            f"{declared_name}: unsupported file type. Use PNG, JPEG or WEBP images "
-            "(the provider's image API accepts those three formats).",
-        )
+def _probe_pillow(opener, declared_name):
+    """Decode the header of an already-validated image; returns (format, w, h, frames)."""
     try:
-        with Image.open(io.BytesIO(data)) as probe:
+        with Image.open(opener) as probe:
             width, height = probe.size
             fmt = (probe.format or "").upper()
             frames = int(getattr(probe, "n_frames", 1) or 1)
     except Exception:  # noqa: BLE001 - any decode failure is a bad upload
         raise UploadError(422, f"{declared_name}: the image could not be decoded.")
+    return fmt, width, height, frames
+
+
+def _validate_probe(mime, fmt, width, height, frames, declared_name):
     if SUPPORTED[mime][1] != fmt:
         raise UploadError(422, f"{declared_name}: file content does not match its type.")
     if frames > 1:
@@ -111,6 +113,22 @@ def probe_image(data, declared_name="reference"):
         )
     if width < 1 or height < 1:
         raise UploadError(422, f"{declared_name}: empty image.")
+
+
+def probe_image(data, declared_name="reference"):
+    """Validate one reference image held in memory and return its metadata.
+
+    Kept for pure unit testing and small callers; the route streams to disk instead.
+    """
+    mime = _sniff_mime(data)
+    if mime is None:
+        raise UploadError(
+            415,
+            f"{declared_name}: unsupported file type. Use PNG, JPEG or WEBP images "
+            "(the provider's image API accepts those three formats).",
+        )
+    fmt, width, height, frames = _probe_pillow(io.BytesIO(data), declared_name)
+    _validate_probe(mime, fmt, width, height, frames, declared_name)
     ext = SUPPORTED[mime][0]
     return {
         "name": clean_name(declared_name, f"reference.{ext}"),
@@ -122,6 +140,32 @@ def probe_image(data, declared_name="reference"):
         "sha256": hashlib.sha256(data).hexdigest(),
         "data": data,
     }
+
+
+async def _stream_to_temp(item, destination, per_file_cap, running_total, total_cap):
+    """Write one UploadFile to disk chunk-by-chunk while hashing; enforce both caps."""
+    digest = hashlib.sha256()
+    size = 0
+    with open(destination, "wb") as handle:
+        while True:
+            chunk = await item.read(CHUNK)
+            if not chunk:
+                break
+            size += len(chunk)
+            if size > per_file_cap:
+                raise UploadError(
+                    413, f"{item.filename or 'file'}: exceeds the per-file size limit."
+                )
+            running_total += len(chunk)
+            if running_total > total_cap:
+                raise UploadError(413, "Attachments exceed the total upload limit.")
+            digest.update(chunk)
+            handle.write(chunk)
+        handle.flush()
+        os.fsync(handle.fileno())
+    if size == 0:
+        raise UploadError(422, "An attached file is empty.")
+    return size, running_total, digest.hexdigest()
 
 
 async def create_upload(ctx, files: list[UploadFile] = File(...)):
@@ -139,89 +183,101 @@ async def create_upload(ctx, files: list[UploadFile] = File(...)):
 
     per_file_cap = caps["max_file_mb"] * 1024 * 1024
     total_cap = caps["max_total_mb"] * 1024 * 1024
-    prepared = []
-    total = 0
+    upload_id = str(uuid.uuid4())
+    root = upload_root(ctx.DATA)
+    root.mkdir(parents=True, exist_ok=True)
+    temp_dir = root / (".incoming-" + upload_id)
+    temp_dir.mkdir(parents=True, exist_ok=False)
     try:
-        for index, item in enumerate(files):
-            label = clean_name(item.filename, f"reference-{index + 1}")
-            data = await item.read(per_file_cap + 1)
-            if len(data) > per_file_cap:
-                raise UploadError(
-                    413,
-                    f"{label}: larger than {caps['max_file_mb']} MiB per-file limit.",
-                )
-            total += len(data)
-            if total > total_cap:
-                raise UploadError(
-                    413,
-                    f"Attachments exceed the {caps['max_total_mb']} MiB total limit.",
-                )
+        os.chmod(temp_dir, 0o700)
+    except OSError:
+        pass
+    total = 0
+    stored = []
+    try:
+        for index, item in enumerate(files, start=1):
+            display = clean_name(item.filename, f"reference-{index}")
+            raw_path = temp_dir / f"raw-{index}.tmp"
             try:
-                prepared.append(probe_image(data, label))
-            except UploadError:
-                raise
+                size, total, sha = await _stream_to_temp(
+                    item, raw_path, per_file_cap, total, total_cap
+                )
             finally:
                 await item.close()
-        if not prepared:
-            raise UploadError(422, "No usable images were attached.")
-
-        upload_id = str(uuid.uuid4())
-        root = upload_root(ctx.DATA)
-        final_dir = root / upload_id
-        temp_dir = root / (".incoming-" + upload_id)
-        temp_dir.mkdir(parents=True, exist_ok=False)
-        stored = []
-        try:
-            for index, meta in enumerate(prepared, start=1):
-                filename = f"{index}-{meta['sha256'][:12]}.{meta['ext']}"
-                path = temp_dir / filename
-                with open(path, "wb") as handle:
-                    handle.write(meta.pop("data"))
-                    handle.flush()
-                    os.fsync(handle.fileno())
-                try:
-                    os.chmod(path, 0o600)
-                except OSError:
-                    pass
-                stored.append({**meta, "file": filename})
-            record = {
-                "id": upload_id,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "files": stored,
-                "count": len(stored),
-                "total_bytes": total,
-                "limits": caps,
-            }
-            temp_meta = temp_dir / "meta.json"
-            with open(temp_meta, "w", encoding="utf-8") as handle:
-                json.dump(record, handle, ensure_ascii=False, indent=2)
-                handle.flush()
-                os.fsync(handle.fileno())
+            with open(raw_path, "rb") as handle:
+                header = handle.read(16)
+            mime = _sniff_mime(header)
+            if mime is None:
+                raise UploadError(
+                    415,
+                    f"{display}: unsupported file type. Use PNG, JPEG or WEBP images "
+                    "(the provider's image API accepts those three formats).",
+                )
+            fmt, width, height, frames = _probe_pillow(raw_path, display)
+            _validate_probe(mime, fmt, width, height, frames, display)
+            ext = SUPPORTED[mime][0]
+            final_name = f"{index}-{sha[:12]}.{ext}"
+            os.replace(raw_path, temp_dir / final_name)
             try:
-                os.chmod(temp_meta, 0o600)
+                os.chmod(temp_dir / final_name, 0o600)
             except OSError:
                 pass
-            os.replace(temp_dir, final_dir)
-        except Exception:
-            shutil.rmtree(temp_dir, ignore_errors=True)
-            raise
-        ctx.record_audit(
-            "upload.created",
-            {"upload_id": upload_id, "count": len(stored), "bytes": total},
-        )
-        return {
-            "upload_id": upload_id,
+            stored.append(
+                {
+                    "name": display,
+                    "safe_name": f"{index}-{display}",
+                    "file": final_name,
+                    "mime": mime,
+                    "ext": ext,
+                    "width": width,
+                    "height": height,
+                    "bytes": size,
+                    "sha256": sha,
+                }
+            )
+        record = {
+            "id": upload_id,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "files": stored,
             "count": len(stored),
             "total_bytes": total,
-            "files": [{k: v for k, v in item.items() if k != "file"} for item in stored],
             "limits": caps,
         }
+        meta_path = temp_dir / "meta.json"
+        with open(meta_path, "w", encoding="utf-8") as handle:
+            json.dump(record, handle, ensure_ascii=False, indent=2)
+            handle.flush()
+            os.fsync(handle.fileno())
+        try:
+            os.chmod(meta_path, 0o600)
+        except OSError:
+            pass
+        final_dir = root / upload_id
+        os.replace(temp_dir, final_dir)
     except UploadError as exc:
+        shutil.rmtree(temp_dir, ignore_errors=True)
         raise HTTPException(exc.status, exc.message) from exc
     except HTTPException:
+        shutil.rmtree(temp_dir, ignore_errors=True)
         raise
     except Exception as exc:  # noqa: BLE001 - never leak paths
+        shutil.rmtree(temp_dir, ignore_errors=True)
         raise HTTPException(500, "Could not store the uploaded images.") from exc
+
+    ctx.record_audit(
+        "upload.created",
+        {"upload_id": upload_id, "count": len(stored), "bytes": total},
+    )
+    return {
+        "upload_id": upload_id,
+        "count": len(stored),
+        "total_bytes": total,
+        "files": [
+            {key: value for key, value in item.items() if key != "file"}
+            for item in stored
+        ],
+        "limits": caps,
+    }
 
 
 def load_upload(ctx, upload_id):
@@ -238,7 +294,12 @@ def load_upload(ctx, upload_id):
         return None
     files = []
     for item in record.get("files", []):
-        path = directory / item["file"]
+        file_name = item.get("file")
+        # The manifest is ours, but validate it anyway: a tampered meta.json must not
+        # turn into a path traversal when the worker opens the references.
+        if not isinstance(file_name, str) or not FILE_NAME_RE.match(file_name):
+            return None
+        path = directory / file_name
         if not path.is_file():
             return None
         files.append({**item, "path": path})
@@ -275,8 +336,8 @@ def delete_upload(ctx, upload_id, force=False):
 
 
 def release_upload(ctx, upload_id):
-    """Delete an upload after its job settles (called by the scheduler)."""
-    if not upload_id:
+    """Delete an upload after its job settles or is removed (called by server code)."""
+    if not upload_id or not UPLOAD_ID_RE.match(str(upload_id)):
         return
     directory = upload_root(ctx.DATA) / upload_id
     if directory.is_dir():
@@ -290,7 +351,7 @@ def usage(ctx):
     size = 0
     if root.is_dir():
         for entry in root.iterdir():
-            if not entry.is_dir() or entry.name.startswith(".incoming-"):
+            if not entry.is_dir() or INCOMING_RE.match(entry.name):
                 continue
             count += 1
             try:
@@ -303,9 +364,12 @@ def usage(ctx):
 
 
 def sweep_uploads(ctx, hours):
-    """Maintenance: drop orphaned/expired uploads, never one used by a live job."""
-    if hours <= 0:
-        return 0
+    """Maintenance: drop orphaned/expired uploads, never one used by a live job.
+
+    Half-written ``.incoming-*`` workspaces are dropped after an hour. Completed or
+    terminal-job uploads normally delete themselves; this sweep is the safety net for
+    crashes and for ``unknown`` jobs whose retention has expired.
+    """
     root = upload_root(ctx.DATA)
     if not root.is_dir():
         return 0
@@ -321,15 +385,21 @@ def sweep_uploads(ctx, hours):
                 )
             )
         }
-    cutoff = datetime.now(timezone.utc).timestamp() - hours * 3600
+    now = datetime.now(timezone.utc).timestamp()
+    cutoff = now - hours * 3600
+    incoming_cutoff = now - 3600
     removed = 0
     for entry in root.iterdir():
         if not entry.is_dir():
             continue
-        if entry.name in active:
-            continue
+        if INCOMING_RE.match(entry.name):
+            limit = incoming_cutoff
+        else:
+            if hours <= 0 or entry.name in active:
+                continue
+            limit = cutoff
         try:
-            if entry.stat().st_mtime >= cutoff:
+            if entry.stat().st_mtime >= limit:
                 continue
         except OSError:
             continue

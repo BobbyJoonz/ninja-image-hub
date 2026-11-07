@@ -46,8 +46,19 @@ class RequestBodyLimit:
             cap = self._upload_cap()
             headers = dict(scope.get("headers", []))
             if cap > 0:
+                raw_length = headers.get(b"content-length")
+                if raw_length is None:
+                    # A chunked upload would otherwise stream unbounded into Starlette's
+                    # spool before the route can enforce its total. Browsers and curl -F
+                    # always send Content-Length for multipart bodies.
+                    return await JSONResponse(
+                        {
+                            "detail": "Uploads require a Content-Length header; chunked uploads are not accepted."
+                        },
+                        status_code=411,
+                    )(scope, receive, send)
                 try:
-                    declared = int(headers.get(b"content-length", b"0"))
+                    declared = int(raw_length)
                 except ValueError:
                     return await JSONResponse(
                         {"detail": "Invalid content length."}, status_code=400

@@ -117,7 +117,7 @@ def health(ctx):
     disk_low = _disk_low(ctx)
     return {
         "ok": True,
-        "version": "0.9.0",
+        "version": "0.9.1",
         "gateway_installed": ctx.runtime_installed(),
         "accounts": accounts_total,
         "running_workers": alive,

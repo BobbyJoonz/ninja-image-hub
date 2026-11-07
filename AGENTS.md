@@ -73,6 +73,15 @@ The docs above are the current description. Older versioned documents were remov
 - Send references to the gateway as multipart `reference_images` only when present; the
   no-reference path stays the historical JSON request (tests and integrations patch that
   signature).
+- Stream each upload to disk while hashing; never hold a whole request in memory. Reject a
+  missing `Content-Length` with `411` (chunked multipart could fill the spool), and keep the
+  directory at 0700/files at 0600.
+- Multipart filenames must be unique per job (`<index>-<name>`); preserve the operator's
+  display name only as metadata. Validate the stored `file` field in `meta.json` against the
+  strict `<n>-<sha12>.<ext>` pattern before opening it.
+- Canceling a queued job, deleting a settled/unknown job and purging an account must all
+  release the job's upload workspace. Half-written `.incoming-*` workspaces are swept after
+  one hour even when retention is disabled.
 
 ## File pipeline
 
@@ -113,7 +122,7 @@ The docs above are the current description. Older versioned documents were remov
 ## Required checks
 
 ```bash
-python -m pytest -q          # 128 passed, 1 skipped (skip = symlink test on unprivileged Windows)
+python -m pytest -q          # 137 passed, 1 skipped (skip = symlink test on unprivileged Windows)
 node --test tests/frontend.test.mjs
 node --check frontend/app.js # plus all frontend modules and preview/demo.js
 python scripts/doctor.py     # exit 0 = ready

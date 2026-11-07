@@ -3,6 +3,7 @@ import base64
 import importlib
 import io
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -433,3 +434,214 @@ def test_upload_ui_contract():
     assert "reference_count" in views
     css = (ROOT / "frontend" / "style.css").read_text(encoding="utf-8")
     assert ".file-drop" in css and ".file-chip" in css
+
+# ------------------------------------------------------------------ deep-review additions
+def _noise_png(size=(700, 700)):
+    import os as _os
+
+    buffer = io.BytesIO()
+    raw = _os.urandom(size[0] * size[1] * 3)
+    Image.frombytes("RGB", size, raw).save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def test_upload_meta_and_safe_names(loaded):
+    client, ctx = loaded
+    h = auth(client)
+    response = upload(client, h, [("my cat.png", _noise_png((64, 64)))])
+    assert response.status_code == 201, response.text
+    meta = response.json()
+    item = meta["files"][0]
+    assert item["name"] == "my cat.png"
+    assert item["safe_name"] == "1-my cat.png"
+    record = ctx.load_upload(meta["upload_id"])
+    assert record is not None
+    assert record["files"][0]["file"].startswith("1-")
+    if os.name != "nt":
+        directory = ctx.DATA / "uploads" / meta["upload_id"]
+        assert directory.stat().st_mode & 0o777 == 0o700
+        assert (directory / record["files"][0]["file"]).stat().st_mode & 0o777 == 0o600
+
+
+def test_total_upload_cap_is_enforced_by_route(loaded, monkeypatch):
+    client, ctx = loaded
+    h = auth(client)
+    monkeypatch.setattr(
+        ctx,
+        "setting",
+        lambda key: {
+            "upload_max_files": 10,
+            "upload_max_file_mb": 20,
+            "upload_max_total_mb": 1,
+        }.get(key, 0),
+    )
+    first, second = _noise_png((700, 700)), _noise_png((700, 700))
+    assert len(first) + len(second) > 1024 * 1024
+    response = upload(client, h, [("a.png", first), ("b.png", second)])
+    assert response.status_code == 413, response.text
+    assert "total" in response.text.lower()
+
+
+def test_chunked_upload_without_content_length_is_rejected(loaded):
+    client, _ = loaded
+    h = auth(client)
+
+    def body():
+        yield b"--x\r\nContent-Disposition: form-data; name=\"files\"; filename=\"a.png\"\r\n"
+        yield b"Content-Type: image/png\r\n\r\n"
+        yield b"\x89PNG\r\n\x1a\n"
+        yield b"\r\n--x--\r\n"
+
+    response = client.post(
+        "/api/uploads",
+        content=body(),
+        headers={**h, "Content-Type": "multipart/form-data; boundary=x"},
+    )
+    assert response.status_code == 411, response.text
+
+
+def test_canceling_queued_job_releases_its_upload(loaded):
+    client, ctx = loaded
+    h = auth(client)
+    client.patch("/api/control", json={"dispatch_paused": True}, headers=h)
+    acc = client.post("/api/accounts", json={"name": "Cancel refs", "autostart": False}, headers=h).json()
+    upload_id = upload(client, h, [("ref.png", _noise_png((64, 64)))]).json()["upload_id"]
+    job = client.post(
+        "/api/generate",
+        json={
+            "account_id": acc["id"],
+            "prompt": "cancel me",
+            "upload_id": upload_id,
+            "idempotency_key": "cancel-refs-0001",
+        },
+        headers=h,
+    ).json()
+    assert (ctx.DATA / "uploads" / upload_id).exists()
+    assert client.delete(f"/api/jobs/{job['id']}", headers=h).status_code == 200
+    assert not (ctx.DATA / "uploads" / upload_id).exists()
+
+
+def test_deleting_unknown_job_releases_its_upload(loaded, tmp_path, monkeypatch):
+    client, ctx = loaded
+    h = auth(client)
+    acc, _capture = _start_mock_account(client, h, ctx, monkeypatch, tmp_path, fail=True)
+    upload_id = upload(client, h, [("ref.png", _noise_png((64, 64)))]).json()["upload_id"]
+    job = client.post(
+        "/api/generate",
+        json={
+            "account_id": acc["id"],
+            "prompt": "unknown then delete",
+            "upload_id": upload_id,
+            "idempotency_key": "unknown-refs-0001",
+        },
+        headers=h,
+    ).json()
+    settled = _wait_job(client, job["id"])
+    assert settled["status"] == "unknown"
+    assert (ctx.DATA / "uploads" / upload_id).exists()
+    assert client.delete(f"/api/jobs/{job['id']}", headers=h).status_code == 200
+    assert not (ctx.DATA / "uploads" / upload_id).exists()
+
+
+def test_purge_account_removes_referenced_uploads(loaded):
+    client, ctx = loaded
+    h = auth(client)
+    acc = client.post("/api/accounts", json={"name": "Purge refs", "autostart": False}, headers=h).json()
+    upload_id = upload(client, h, [("ref.png", _noise_png((64, 64)))]).json()["upload_id"]
+    assert client.post(f"/api/accounts/{acc['id']}/archive", headers=h).status_code == 200
+    import uuid
+    from sqlalchemy import insert
+
+    with ctx.engine.begin() as conn:
+        conn.execute(
+            insert(ctx.jobs).values(
+                id=str(uuid.uuid4()),
+                account_id=acc["id"],
+                prompt="archived refs",
+                aspect_ratio="1:1",
+                quality_preference="best",
+                status="canceled",
+                n=1,
+                reference_upload_id=upload_id,
+                reference_count=1,
+                created_at=ctx.now(),
+                finished_at=ctx.now(),
+            )
+        )
+    assert (ctx.DATA / "uploads" / upload_id).exists()
+    purge = client.post(
+        f"/api/accounts/{acc['id']}/purge",
+        json={"confirmation": "DELETE Purge refs"},
+        headers=h,
+    )
+    assert purge.status_code == 200, purge.text
+    assert not (ctx.DATA / "uploads" / upload_id).exists()
+
+
+def test_duplicate_names_get_distinct_safe_names(loaded):
+    client, _ = loaded
+    h = auth(client)
+    response = upload(
+        client,
+        h,
+        [("same.png", _noise_png((32, 32))), ("same.png", _noise_png((33, 33)))],
+    )
+    assert response.status_code == 201, response.text
+    assert [item["safe_name"] for item in response.json()["files"]] == [
+        "1-same.png",
+        "2-same.png",
+    ]
+
+
+def test_agent_upload_then_generate(loaded, tmp_path, monkeypatch):
+    client, ctx = loaded
+    h = auth(client)
+    acc, capture = _start_mock_account(client, h, ctx, monkeypatch, tmp_path)
+    bearer = {"Authorization": "Bearer test-agent-key-98765"}
+    uploaded = upload(
+        client,
+        {},
+        [("agent-ref.png", _noise_png((64, 64)))],
+        path="/v1/uploads",
+        auth_header=bearer,
+    )
+    assert uploaded.status_code == 201, uploaded.text
+    upload_id = uploaded.json()["upload_id"]
+    created = client.post(
+        "/v1/images/generations",
+        json={
+            "account_id": acc["id"],
+            "prompt": "agent with reference",
+            "upload_id": upload_id,
+            "idempotency_key": "agent-refs-0001",
+        },
+        headers=bearer,
+    )
+    assert created.status_code == 202, created.text
+    job_id = created.json()["id"]
+    job = None
+    for _ in range(500):
+        job = client.get(f"/v1/jobs/{job_id}", headers=bearer).json()
+        if job["status"] in ("completed", "failed", "unknown", "partial", "rate_limited"):
+            break
+        time.sleep(0.04)
+    assert job["status"] == "completed", job
+    assert job["reference_count"] == 1
+    requests = [json.loads(line) for line in capture.read_text(encoding="utf-8").splitlines() if line]
+    body = base64.b64decode(requests[-1]["body_b64"]).decode("latin1")
+    assert 'name="reference_images"' in body
+    assert "agent-ref.png" in body
+    assert not (ctx.DATA / "uploads" / upload_id).exists()
+
+
+def test_sweep_cleans_half_written_workspaces(loaded):
+    client, ctx = loaded
+    root = ctx.DATA / "uploads"
+    root.mkdir(parents=True, exist_ok=True)
+    incoming = root / ".incoming-crashed"
+    incoming.mkdir()
+    (incoming / "raw-1.tmp").write_bytes(b"partial")
+    old = time.time() - 7200
+    os.utime(incoming, (old, old))
+    assert ctx.sweep_uploads(0) == 1
+    assert not incoming.exists()

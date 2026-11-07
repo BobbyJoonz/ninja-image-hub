@@ -326,6 +326,7 @@ def delete_job(ctx, job_id: str):
                     .values(status="canceled", finished_at=ctx.now())
                 )
             ctx.queue_wakeup.set()
+        ctx.release_upload(row["reference_upload_id"])
         return {
             "ok": True,
             "message": "Queued job canceled before provider dispatch; job retained for auditing.",
@@ -338,4 +339,5 @@ def delete_job(ctx, job_id: str):
     for filename in set(files):
         if re.fullmatch("[a-f0-9-]{36}(?:-[0-9]{1,2})?\\.(png|jpg|webp)", filename):
             (ctx.DATA / "gallery" / filename).unlink(missing_ok=True)
+    ctx.release_upload(row["reference_upload_id"])
     return {"ok": True}

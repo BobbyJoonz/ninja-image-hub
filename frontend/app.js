@@ -211,7 +211,14 @@ function validateSelection(files) {
 function addReferenceFiles(list) {
   const merged = [...S.referenceFiles];
   for (const file of list) {
-    if (!merged.some((f) => f.name === file.name && f.size === file.size)) {
+    if (
+      !merged.some(
+        (f) =>
+          f.name === file.name &&
+          f.size === file.size &&
+          f.lastModified === file.lastModified,
+      )
+    ) {
       file.previewUrl = URL.createObjectURL(file);
       merged.push(file);
     }

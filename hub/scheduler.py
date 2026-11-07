@@ -73,7 +73,7 @@ def execute_job(ctx, job_id, acc, prompt, aspect, quality_preference, n=1):
                     (
                         "reference_images",
                         (
-                            item.get("name") or "reference",
+                            item.get("safe_name") or item.get("name") or "reference",
                             handle,
                             item.get("mime") or "image/png",
                         ),

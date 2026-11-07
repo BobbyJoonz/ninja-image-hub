@@ -479,6 +479,15 @@ def permanently_remove_account(ctx, account_id: str, body: ConfirmRemove):
                 if r[0]
             )
         )
+        uploads = [
+            r[0]
+            for r in c.execute(
+                select(ctx.jobs.c.reference_upload_id).where(
+                    ctx.jobs.c.account_id == account_id,
+                    ctx.jobs.c.reference_upload_id.is_not(None),
+                )
+            )
+        ]
     with ctx.engine.begin() as c:
         c.execute(
             ctx.job_images.delete().where(
@@ -492,6 +501,8 @@ def permanently_remove_account(ctx, account_id: str, body: ConfirmRemove):
     for filename in images:
         if re.fullmatch("[a-f0-9-]{36}(?:-[0-9]{1,2})?\\.(png|jpg|webp)", filename):
             (ctx.DATA / "gallery" / filename).unlink(missing_ok=True)
+    for upload_id in set(uploads):
+        ctx.release_upload(upload_id)
     worker_dir = ctx.DATA / "accounts" / account_id
     if worker_dir.exists():
         shutil.rmtree(worker_dir)
