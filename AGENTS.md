@@ -79,6 +79,12 @@ The docs above are the current description. Older versioned documents were remov
 - Multipart filenames must be unique per job (`<index>-<name>`); preserve the operator's
   display name only as metadata. Validate the stored `file` field in `meta.json` against the
   strict `<n>-<sha12>.<ext>` pattern before opening it.
+- Keep `_patch_fast_prompt_insert` (marker `ninja:fast-prompt-insert`): it replaces the
+  per-key typing path with `keyboard.insertText` when attachments must survive, and must stay
+  fail-open (the upstream verification still falls back to typing). Never remove the patch or
+  its idempotence marker; after an upgrade, workers must be Stop→Start-ed to receive it.
+- Browser previews for references must stay bounded (96 px thumbnails); never hold ten
+  decoded full-resolution images in the DOM. The uploaded File/bytes stay untouched.
 - Canceling a queued job, deleting a settled/unknown job and purging an account must all
   release the job's upload workspace. Half-written `.incoming-*` workspaces are swept after
   one hour even when retention is disabled.
@@ -122,7 +128,7 @@ The docs above are the current description. Older versioned documents were remov
 ## Required checks
 
 ```bash
-python -m pytest -q          # 137 passed, 1 skipped (skip = symlink test on unprivileged Windows)
+python -m pytest -q          # 140 passed, 1 skipped (skip = symlink test on unprivileged Windows)
 node --test tests/frontend.test.mjs
 node --check frontend/app.js # plus all frontend modules and preview/demo.js
 python scripts/doctor.py     # exit 0 = ready

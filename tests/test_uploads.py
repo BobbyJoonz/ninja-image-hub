@@ -645,3 +645,11 @@ def test_sweep_cleans_half_written_workspaces(loaded):
     os.utime(incoming, (old, old))
     assert ctx.sweep_uploads(0) == 1
     assert not incoming.exists()
+
+def test_reference_thumbnails_are_bounded_in_the_browser():
+    app = (ROOT / "frontend" / "app.js").read_text(encoding="utf-8")
+    assert "createImageBitmap" in app
+    assert "referencePreviewUrl" in app
+    assert "bitmap.close" in app
+    # The uploaded File object must stay untouched; only the chip preview is resized.
+    assert "resizeWidth" not in app  # we scale by canvas, keeping aspect ratio

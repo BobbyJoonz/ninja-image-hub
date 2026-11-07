@@ -560,7 +560,7 @@ Guardrails:
 ## Verification
 
 ```bash
-python -m pytest -q                     # 137 passed, 1 skipped  (~96 s)
+python -m pytest -q                     # 140 passed, 1 skipped  (~96 s)
 node --test tests/frontend.test.mjs     # 6 passed
 node --check frontend/app.js            # + all modules + preview/demo.js
 python scripts/doctor.py                # exit 0 = ready

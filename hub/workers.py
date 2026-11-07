@@ -345,6 +345,47 @@ def _patch_popup_follow(worker):
     return True
 
 
+
+FAST_INSERT_MARKER = "ninja:fast-prompt-insert"
+
+
+def _patch_fast_prompt_insert(worker):
+    """Insert the prompt in one CDP call when attachments must be preserved.
+
+    `fill()` would wipe ChatGPT attachments, so upstream falls back to per-key typing at
+    TYPE_DELAY_MS plus CDP round-trip overhead. Measured on this host: a 3,126-character
+    prompt took 95.5 s to type and dominated the whole job (144.9 s gateway time).
+    `keyboard.insertText` dispatches the same input events in one call and keeps the
+    composer's attachment chips; if the text does not land the upstream verification path
+    still falls back to per-key typing, so this patch is fail-open.
+    """
+    path = pathlib.Path(worker) / "src" / "chatgpt.js"
+    if not path.is_file():
+        return False
+    content = path.read_text(encoding="utf-8")
+    if FAST_INSERT_MARKER in content:
+        return False
+    old = (
+        "      typedPerKey = true;\n"
+        "      await typeLines(text,\n"
+        "        (line) => p.keyboard.type(line, { delay: TYPE_DELAY_MS }),\n"
+        "        () => p.keyboard.press('Shift+Enter'));"
+    )
+    if content.count(old) != 1:
+        return False
+    new = (
+        "      typedPerKey = true;\n"
+        "      // ninja:fast-prompt-insert — keep attachments, skip the per-key delay.\n"
+        "      const __insertStart = Date.now();\n"
+        "      await typeLines(text,\n"
+        "        (line) => p.keyboard.insertText(line),\n"
+        "        () => p.keyboard.press('Shift+Enter'));\n"
+        "      console.log(`[fast-insert] ${text.length} chars in ${Date.now() - __insertStart} ms`);"
+    )
+    path.write_text(content.replace(old, new, 1), encoding="utf-8")
+    return True
+
+
 PROJECT_URL_MARKER = "ninja:project-url"
 
 
@@ -872,6 +913,7 @@ def ensure_worker_copy(ctx, acc):
     _patch_settings_probe(worker)
     _patch_live_view(worker)
     _patch_launch_args(worker)
+    _patch_fast_prompt_insert(worker)
     return worker
 
 

@@ -164,6 +164,35 @@ function clearReferenceFiles() {
   renderFileChips();
 }
 
+async function referencePreviewUrl(file) {
+  // A 16 MP reference decoded at 34 px in the chip would keep the full bitmap in browser
+  // memory (10 references ≈ hundreds of MB). Draw one small JPEG preview instead, one
+  // image at a time, and let the full-size File be uploaded unchanged.
+  try {
+    if (typeof createImageBitmap === "function" && typeof document === "object") {
+      const bitmap = await createImageBitmap(file);
+      const scale = Math.max(
+        1,
+        Math.max(bitmap.width, bitmap.height) / 96,
+      );
+      const width = Math.max(1, Math.round(bitmap.width / scale));
+      const height = Math.max(1, Math.round(bitmap.height / scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext("2d").drawImage(bitmap, 0, 0, width, height);
+      if (typeof bitmap.close === "function") bitmap.close();
+      const blob = await new Promise((resolve) =>
+        canvas.toBlob(resolve, "image/jpeg", 0.72),
+      );
+      if (blob) return URL.createObjectURL(blob);
+    }
+  } catch {
+    /* older browser or a corrupt file: fall back to the original object URL */
+  }
+  return URL.createObjectURL(file);
+}
+
 function renderFileChips() {
   if (!fileChips) return;
   fileChips.innerHTML = S.referenceFiles
@@ -208,8 +237,15 @@ function validateSelection(files) {
   return "";
 }
 
-function addReferenceFiles(list) {
+let referenceBusy = false;
+
+async function addReferenceFiles(list) {
+  if (referenceBusy) {
+    toast("Still preparing the previous selection…", true);
+    return;
+  }
   const merged = [...S.referenceFiles];
+  const added = [];
   for (const file of list) {
     if (
       !merged.some(
@@ -219,26 +255,28 @@ function addReferenceFiles(list) {
           f.lastModified === file.lastModified,
       )
     ) {
-      file.previewUrl = URL.createObjectURL(file);
       merged.push(file);
+      added.push(file);
     }
   }
   const error = validateSelection(merged);
   if (error) {
     toast(error, true);
-    for (const file of merged) {
-      if (!S.referenceFiles.includes(file) && file.previewUrl)
-        URL.revokeObjectURL(file.previewUrl);
-    }
     return;
   }
-  S.referenceFiles = merged;
-  renderFileChips();
+  referenceBusy = true;
+  try {
+    for (const file of added) file.previewUrl = await referencePreviewUrl(file);
+    S.referenceFiles = merged;
+    renderFileChips();
+  } finally {
+    referenceBusy = false;
+  }
 }
 
 if (fileInput) {
-  fileInput.addEventListener("change", () => {
-    addReferenceFiles([...fileInput.files]);
+  fileInput.addEventListener("change", async () => {
+    await addReferenceFiles([...fileInput.files]);
     fileInput.value = "";
   });
 }
@@ -255,8 +293,8 @@ if (fileDrop) {
       fileDrop.classList.remove("dragover");
     }),
   );
-  fileDrop.addEventListener("drop", (event) => {
-    addReferenceFiles([...(event.dataTransfer?.files || [])]);
+  fileDrop.addEventListener("drop", async (event) => {
+    await addReferenceFiles([...(event.dataTransfer?.files || [])]);
   });
 }
 if (fileChips) {
