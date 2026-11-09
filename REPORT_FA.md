@@ -39,7 +39,7 @@ v0.7.0 یک انتشار **سخت‌سازی + بهره‌برداری** است�
 
 ## شواهد اجراشده
 
-- `python -m pytest -q` → **۱۴۲ passed، ۱ skipped** (حدود ۶۰ ثانیه). تست skip مربوط به symlink روی میزبان بدون privilege است.
+- `python -m pytest -q` → **۱۵۷ passed، ۱ skipped** (حدود ۶۰ ثانیه). تست skip مربوط به symlink روی میزبان بدون privilege است.
 - `node --test tests/frontend.test.mjs` → **۵ pass**.
 - `node --check frontend/app.js` و هر ۶ ماژول `frontend/modules/` و `preview/demo.js` → **OK**.
 - E2E زنده روی کد اصلاح‌شده با دروازهٔ جعلیِ سازگار با قرارداد: worker آنلاین و `session: connected`؛ Job با `n=2` → `completed` با **۲ فایل اصلی متمایز**؛ گالری **۲ آیتم**؛ خروجی ZIP با کد **۲۰۰** و امضای **`PK`**؛ kill کردن فرایند worker به‌طور خودکار بازیابی شد و Job بعدی هم `completed` شد. این E2E با دروازهٔ شبیه‌سازی‌شده است، نه ChatGPT Plus واقعی.
@@ -111,7 +111,7 @@ v0.7.0 یک انتشار **سخت‌سازی + بهره‌برداری** است�
 | اندازه‌گیری ظرفیت | `scripts/capacity_report.py` (read-only + probe دومرحله‌ای) | تست percentile/summarize |
 | تنظیمات زنده | چهار تنظیم جدید در `control_settings` + Operations + `/api/settings` | تست اعتبارسنجی/ماندگاری |
 
-**اعداد تست:** `pytest` → **۱۴۲ passed، ۱ skipped**؛ `node --test` → **۶ pass**؛ `doctor.py` و `build_icons.py --check` سبز؛ `preview/dist` byte-identical.
+**اعداد تست:** `pytest` → **۱۵۷ passed، ۱ skipped**؛ `node --test` → **۶ pass**؛ `doctor.py` و `build_icons.py --check` سبز؛ `preview/dist` byte-identical.
 
 **هنوز تأییدنشده (باید با اکانت واقعی سنجیده شود):** نرخ واقعی ۱۰ اکانت و ۵۰۰ تصویر/۵ ساعت. ابزار اندازه‌گیری آماده است (`scripts/capacity_report.py`)، اما هیچ عدد واقعی provider تا اجرای آن روی سرور در این گزارش ثبت نمی‌شود.
 
@@ -129,7 +129,7 @@ v0.7.0 یک انتشار **سخت‌سازی + بهره‌برداری** است�
 | پایش | `effort_below_requested_24h` در `/api/health` + هشدار `watch.py` | تست هشدار |
 | تنظیم زنده | `thinking_effort` enum در Operations + `THINKING_EFFORT` | تست 422 برای مقدار نامعتبر و ماندگاری |
 
-**اعداد تست:** `pytest` → **۱۴۲ passed، ۱ skipped**؛ `node --test` → **۶ pass**.
+**اعداد تست:** `pytest` → **۱۵۷ passed، ۱ skipped**؛ `node --test` → **۶ pass**.
 
 **تأیید با اجرای واقعی (۶ نوامبر ۲۰۲۶):** یک Job واقعی روی اکانت متصل ( single small blue dot..., n=1) در **۸۱ ثانیه** completed شد و Gateway گزارش داد 	hinking_requested=high, 	hinking_applied=high, 	hinking_verified=1, بدون fallback؛ badge در Jobs «High ✓» بود و effort_below_requested_24h=0 ماند. Job آزمایشی بعد از ثبت شاهد پاک شد. شرط باقی‌مانده: اگر اکانت/پلن سطح High را از دست بدهد، هشدار ۲۴ ساعته (watch) و badge «High → ...» آن را نشان می‌دهد.
 
@@ -146,7 +146,7 @@ v0.7.0 یک انتشار **سخت‌سازی + بهره‌برداری** است�
 | UI | drag/drop، chips، اعتبارسنجی سمت مرورگر، upload قبل از queue | تست UI contract + اسکرین‌شات واقعی |
 | امنیت/دیسک | آپلود فقط admin+CSRF یا Bearer؛ رد 507 در دیسک کم؛ بکاپ شامل نمی‌شود | تست limits + backup exclusion |
 
-**اعداد تست:** `pytest` → **۱۴۲ passed، ۱ skipped**؛ `node --test` → **۶ pass**.
+**اعداد تست:** `pytest` → **۱۵۷ passed، ۱ skipped**؛ `node --test` → **۶ pass**.
 
 **اثبات زنده (۷ نوامبر ۲۰۲۶):** دو تصویر مرجع (۵٬۶۹۳ بایت) آپلود شد و یک Job واقعی در **۶۳ ثانیه**
 `completed` شد؛ `reference_count=2`، `thinking=high/verified=1`، خروجی در گالری ثبت و سپس پاک شد.
@@ -170,7 +170,7 @@ v0.7.0 یک انتشار **سخت‌سازی + بهره‌برداری** است�
 8. `meta.json` دست‌کاری‌شده می‌توانست path traversal بدهد → اعتبارسنجی نام فایل.
 9. UI فایل‌های هم‌مشخصات را تکراری می‌دید / فوکوس drop zone نامرئی بود → اصلاح.
 
-**تست:** ۹ تست جدید → **۱۴۲ passed، ۱ skipped**؛ ۶ Node test. اثبات زندهٔ v0.9.0 (۲ مرجع، ۶۳ ثانیه، High verified) پس از این refactor دوباره با یک Job واقعی تکرار شد.
+**تست:** ۹ تست جدید → **۱۵۷ passed، ۱ skipped**؛ ۶ Node test. اثبات زندهٔ v0.9.0 (۲ مرجع، ۶۳ ثانیه، High verified) پس از این refactor دوباره با یک Job واقعی تکرار شد.
 
 
 ## v0.10.0 — بهینه‌سازی جریان تصاویر مرجع
@@ -188,7 +188,7 @@ ChatGPT اجازهٔ `fill()` نمی‌دهد و Gateway پرامپت را کا�
 1. پچ idempotent و fail-open در `hub/workers.py`: مسیر تایپ را با `keyboard.insertText`
    جایگزین می‌کند؛ اگر متن ننشیند، verification خود Gateway به تایپ کاراکتری برمی‌گردد.
 2. Thumbnailهای ۹۶px در UI برای مراجع، به‌جای decode کامل ۱۰ تصویر ۱۶MP (JS heap ~۱MiB).
-3. تست‌ها: patch idempotent/fail-open + قرارداد UI thumbnail. مجموع → **۱۴۲ passed، ۱ skipped**.
+3. تست‌ها: patch idempotent/fail-open + قرارداد UI thumbnail. مجموع → **۱۵۷ passed، ۱ skipped**.
 
 **تست‌های واقعی همین دور:** batch n=2 با مرجع (۲ تصویر، refs=1، High verified)، پرامپت
 ۳٬۱۲۶ کاراکتری با مرجع (قبل/بعد پچ)، و بررسی مرورگر با ۱۰ مرجع ۴MiB (همه thumbnail ۹۶px).
@@ -213,3 +213,21 @@ fill-then-attach (سود حاشیه‌ای و ریسک React).
 (خطای «ChatGPT page did not load» که Gateway آن را HTTP 500 می‌دهد). این خطا **قبل از ارسال**
 رخ داده اما scheduler فعلی هر ۵۰۰ Gateway را `unknown` می‌کند؛ پیشنهاد: تشخیص `error_kind`
 pre-submit و ثبت `failed` به‌جای `unknown` (تا اپراتور بتواند آگاهانه retry کند).
+
+
+## v0.12.0 — طبقه‌بندی خطا، ابزار آشتی، بررسی پچ و جداسازی تست
+
+| کار | شاهد |
+|---|---|
+| طبقه‌بندی 5xx از body | `page_load_failed`/`invalid_request`/`policy_violation`/`image_generation_failed` → failed؛ `timeout`/`server_error`/بدون kind → unknown؛ ۱۱ تست param |
+| نمایش blocker | تست `login_blocker` در پیام Job |
+| rate-limit درست | `error_kind` از سطح بالا خوانده می‌شود؛ تست ۴۲۹ → rate_limited + cooldown |
+| resolve آزادکنندهٔ مرجع | تست: upload پس از resolve حذف می‌شود |
+| `resolve_unknown.py` | فیلتر متن/سن/ids؛ dry-run پیش‌فرض؛ ۴ تست (۳ pure + یک resolve release) |
+| doctor | چک marker در workspaceها + تطبیق RENDER_WAIT_SEC؛ در اجرای واقعی PASS (۲ workspace) |
+| جداسازی تست | `GATEWAY_PORT_BASE` + conftest؛ کل تست‌ها با worker زنده: **۱۵۷ passed، ۱ skipped** |
+| تمرین بکاپ/ریستور | ۲۸ فایل، ۵۰.۹۹MB، integrity ok، ۴۰ Job، ۲۴ گالری |
+| دوام صف | Job در صف + upload پس از ری‌استارت پنل باقی ماند |
+
+**هنوز نامعلوم‌های قبلی:** ۱۵ Job از دور قبل (قبل از این طبقه‌بندی) با پیام عمومی قدیمی
+باقی مانده‌اند؛ ابزار لیست/آشتی آماده است ولی اجرای آن نیاز به تأیید اپراتور دارد.

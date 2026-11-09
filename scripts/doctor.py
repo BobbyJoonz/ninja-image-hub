@@ -344,6 +344,131 @@ def check_linux_host():
         record("warn", "fonts", "fontconfig not installed", "sudo apt install -y fontconfig fonts-liberation")
 
 
+
+
+def _control_setting(data_dir, key):
+    """Read one control_settings value from the SQLite database, if present."""
+    path = Path(data_dir) / "hub.db"
+    if not path.is_file():
+        return None
+    try:
+        connection = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=5)
+        try:
+            row = connection.execute(
+                "SELECT value FROM control_settings WHERE key=?", (key,)
+            ).fetchone()
+        finally:
+            connection.close()
+    except sqlite3.Error:
+        return None
+    return row[0] if row else None
+
+
+def _running_gateway_envs():
+    """port -> environment for running gateway processes (best effort)."""
+    try:
+        import psutil
+    except ImportError:
+        return {}
+    envs = {}
+    try:
+        for process in psutil.process_iter(["pid", "name", "cmdline"]):
+            cmdline = " ".join(process.info.get("cmdline") or [])
+            if "src/server.js" not in cmdline and "src\\server.js" not in cmdline:
+                continue
+            try:
+                env = process.environ()
+            except (psutil.Error, OSError):
+                continue
+            port = env.get("PORT")
+            if port and port.isdigit():
+                envs[int(port)] = env
+    except Exception:  # noqa: BLE001 - diagnostics must never crash the doctor
+        return envs
+    return envs
+
+
+def worker_patch_issues(data_dir, running_envs=None, expected_wait=None):
+    """Pure check: account gateways must carry the prompt-insert patch and the wait cap.
+
+    Anchors in the vendored gateway can change on upgrade, which silently disables the
+    patches (slow typing, fixed 15 s render wait). This reports it before a job does.
+    """
+    data_dir = Path(data_dir)
+    issues = []
+    accounts = data_dir / "accounts"
+    workspaces = 0
+    for gateway in sorted(accounts.glob("*/gateway")):
+        source = gateway / "src" / "chatgpt.js"
+        if not source.is_file():
+            continue
+        workspaces += 1
+        try:
+            content = source.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            issues.append(
+                {
+                    "account": gateway.parent.name[:8],
+                    "kind": "unreadable",
+                    "detail": "chatgpt.js could not be read",
+                }
+            )
+            continue
+        if "ninja:fast-prompt-insert" not in content:
+            issues.append(
+                {
+                    "account": gateway.parent.name[:8],
+                    "kind": "patch_missing",
+                    "detail": "prompt-insert patch missing (slow per-key typing)",
+                }
+            )
+    if expected_wait is not None and running_envs:
+        for port, env in running_envs.items():
+            wait = env.get("RENDER_WAIT_SEC")
+            if wait is None:
+                issues.append(
+                    {
+                        "account": f"port {port}",
+                        "kind": "render_wait_missing",
+                        "detail": f"worker has no RENDER_WAIT_SEC (setting {expected_wait}s)",
+                    }
+                )
+            elif wait != str(expected_wait):
+                issues.append(
+                    {
+                        "account": f"port {port}",
+                        "kind": "render_wait_mismatch",
+                        "detail": f"worker RENDER_WAIT_SEC={wait}, setting {expected_wait}",
+                    }
+                )
+    return workspaces, issues
+
+
+def check_worker_patches(data):
+    expected = _control_setting(data, "render_wait_sec")
+    expected_wait = int(expected) if expected and expected.isdigit() else None
+    workspaces, issues = worker_patch_issues(
+        data, _running_gateway_envs(), expected_wait
+    )
+    if not workspaces:
+        record("ok", "worker patches", "no worker workspaces installed yet")
+        return
+    if not issues:
+        record(
+            "ok",
+            "worker patches",
+            f"prompt-insert present in {workspaces} workspace(s); render cap matches",
+        )
+        return
+    details = "; ".join(f"{i['account']}: {i['detail']}" for i in issues[:5])
+    record(
+        "warn",
+        "worker patches",
+        details,
+        "Stop -> Start each worker after upgrading the panel or the gateway",
+    )
+
+
 def check_ports():
     global PORT_HINT
     port = int(os.getenv("PORT", "8080"))
@@ -365,12 +490,16 @@ def check_ports():
     else:
         PORT_HINT = port
         record("ok", "panel port", f"127.0.0.1:{port} free")
+    try:
+        port_base = int(os.getenv("GATEWAY_PORT_BASE", "41000"))
+    except ValueError:
+        port_base = 41000
     free = 0
-    for candidate in range(41000, 41010):
+    for candidate in range(port_base, port_base + 10):
         with socket.socket() as sock:
             if sock.connect_ex(("127.0.0.1", candidate)) != 0:
                 free += 1
-    record("ok" if free else "fail", "worker ports", f"{free}/10 free in 41000-41009",
+    record("ok" if free else "fail", "worker ports", f"{free}/10 free in {port_base}-{port_base + 9}",
            "stop stray gateway processes" if not free else "")
 
 
@@ -395,6 +524,7 @@ def main():
     check_database(data)
     check_memory()
     check_gateway()
+    check_worker_patches(data)
     check_linux_host()
     check_ports()
 

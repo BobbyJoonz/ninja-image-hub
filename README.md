@@ -10,7 +10,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Node.js](https://img.shields.io/badge/node-22%2B-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![SQLite](https://img.shields.io/badge/SQLite-WAL-003B57?logo=sqlite&logoColor=white)](https://www.sqlite.org/wal.html)
-[![Tests](https://img.shields.io/badge/tests-142%20passed%20%C2%B7%201%20skipped-2ea043)](#verification)
+[![Tests](https://img.shields.io/badge/tests-157%20passed%20%C2%B7%201%20skipped-2ea043)](#verification)
 [![Accounts](https://img.shields.io/badge/accounts-1%20to%2016-8957e5)](#multi-account-model)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-linux%20%7C%20windows-6e7681)](#quick-start)
@@ -91,6 +91,17 @@ An opt-in Studio toggle downscales large references to <=2048 px WebP before upl
 (measured 4.1 MiB PNG -> 1.0 MiB WebP; two references 8.2 -> 2.1 MiB); it is off by default,
 so the selected bytes are uploaded unchanged unless enabled. Uploads stream to disk: 40 MiB
 of references are stored in ~0.56 s with the panel's RSS unchanged (+0.1 MiB).
+
+**Honest failure classification.** The scheduler now reads the gateway's structured
+error body (`error_kind`, `should_retry`, `login_blocker`, message) instead of turning every
+HTTP 5xx into `unknown`. Page-load/login/composer-upload/validation failures and explicit
+provider refusals or "generation failed" turns become `failed` with the real kind and message
+("nothing was delivered; safe to re-submit"), while only genuinely ambiguous outcomes
+(`timeout`, `server_error`, empty kind) stay `unknown`. `scripts/resolve_unknown.py` lists
+those unresolved jobs and applies an operator verdict (dry-run by default, `--yes` to write),
+and a resolution now releases the job's reference workspace. `doctor.py` also checks that
+each worker workspace still carries the prompt-insert patch and that running workers received
+`RENDER_WAIT_SEC`, so a gateway upgrade cannot silently disable the optimisations.
 
 ### Why this exists
 
@@ -424,6 +435,7 @@ All of these are **live** unless marked *restart*. Every change requires admin s
 | `python scripts/build_icons.py` | `--check` | Regenerates the bundled Lucide icon sprite (`frontend/icons/sprite.svg`, ISC) and the favicon from a pinned version; `--check` verifies every icon the UI references |
 | `python scripts/backup.py` | `create`, `verify`, `restore` | WAL-safe SQLite snapshot + originals + per-account sessions + `.env`; `verify` re-hashes every file; `restore` requires an empty target or `--force` |
 | `python scripts/watch.py` | `--once`, `--interval`, `--webhook` | Alerts on unresolved unknown jobs, low disk, queue stalls and an unreachable panel; de-duplicated via a state file; JSON webhook payload |
+| `python scripts/resolve_unknown.py` | `--match`, `--older-than-hours`, `--resolution`, `--yes` | Lists unresolved `unknown` jobs and records an operator verdict through the one-shot resolve endpoint; read-only unless `--yes`; never re-submits upstream; resolving releases the job's reference workspace |
 | `python scripts/capacity_report.py` | `--submit --yes`, `--accounts` | Read-only capacity snapshot by default; with `--submit` measures real wall time, queue wait, generation p50/p95 and sustained images/hour against a real panel |
 | `python scripts/serve_preview.py` | `--host`, `--port` | Serves `preview/dist` with correct MIME types (the sample-data preview) |
 | `python scripts/audit_gallery.py` | — | **Read-only** report of missing/unindexed files; never deletes anything |
@@ -574,7 +586,7 @@ Guardrails:
 ## Verification
 
 ```bash
-python -m pytest -q                     # 142 passed, 1 skipped  (~96 s)
+python -m pytest -q                     # 157 passed, 1 skipped  (~96 s)
 node --test tests/frontend.test.mjs     # 6 passed
 node --check frontend/app.js            # + all modules + preview/demo.js
 python scripts/doctor.py                # exit 0 = ready

@@ -517,3 +517,64 @@ Upstream بعد از تشخیص تصویر، ۱۵ ثانیه ثابت صبر م�
 | multer → diskStorage در Gateway | نیاز به تغییر ساختاری مسیر buffer→path در generate و edit، ریسک رگرسیون بالا؛ سود آن فقط RAM نودی است که با سقف ۵۰MiB کنترل شده |
 | کتابخانهٔ مراجع | نیاز به retain/reuse + UI انتخاب؛ در backlog |
 | fill-then-attach | ممکن است React متن را با attach پاک کند؛ با insertText فعلی تایپ زیر ۱s است و سود حاشیه‌ای کم |
+
+
+## طبقه‌بندی خطا، ابزار آشتی و بررسی پچ‌ها — v0.12
+
+### خطاهای Gateway حالا از body خوانده می‌شوند
+
+| error_kind | نتیجه | چرا |
+|---|---|---|
+| `page_load_failed`, `login_failed`, `login_required`, `upload_failed`, `invalid_request`, `unauthorized`, `queue_full` | `failed` | پیش از ارسال به ChatGPT شکست خورده؛ چیزی تحویل نشده |
+| `policy_violation`, `refused`, `image_generation_failed` | `failed` | provider صریحاً گفته تصویری تولید نشده |
+| `timeout`, `server_error`, بدون kind | `unknown` | واقعاً نامعلوم؛ هیچ retry خودکاری انجام نمی‌شود |
+
+پیام Job حالا شامل kind، پیام Gateway و `login_blocker` است؛ برای failed عبارت
+«safe to re-submit» و برای unknown «check the account manually before retry» ثبت می‌شود.
+تست‌های منفی: ۵۰۰ با `page_load_failed` → failed؛ ۵۰۰ بدون kind → unknown.
+
+### ابزار `scripts/resolve_unknown.py`
+
+```bash
+python scripts/resolve_unknown.py --password "$ADMIN_PASSWORD"                 # فقط لیست
+python scripts/resolve_unknown.py --password ... --match "page_load"           # فیلتر
+python scripts/resolve_unknown.py --password ... --resolution not_delivered \
+    --match "page_load" --yes                                                  # اعمال
+```
+
+- پیش‌فرض read-only است؛ بدون `--yes` هیچ نوشتنی انجام نمی‌شود.
+- فقط Jobهای `unknown` که هنوز `resolution` ندارند.
+- هر resolve از مسیر endpoint یک‌بارمصرف + audit استفاده می‌کند و upload مرجع را آزاد می‌کند.
+- هرگز چیزی را دوباره submit نمی‌کند.
+
+> ۱۵ Job `unknown` فعلی (خطای page-load پیش از ارسال) هنوز به‌صورت دستی تأیید نشده‌اند؛
+> خروجی dry-run لیست آن‌ها را نشان می‌دهد. با `--resolution not_delivered --yes` بسته می‌شوند
+> و uploadهایشان آزاد می‌شود.
+
+### بررسی پچ‌ها در doctor
+
+`python scripts/doctor.py` حالا:
+- وجود `ninja:fast-prompt-insert` را در هر workspace نصب‌شده چک می‌کند (WARN + راهنمای Stop→Start).
+- برای workerهای در حال اجرا بررسی می‌کند `RENDER_WAIT_SEC` با تنظیم `render_wait_sec` یکی باشد.
+- در اجرای واقعی: `[PASS] worker patches: prompt-insert present in 2 workspace(s); render cap matches`.
+
+### ایزوله‌کردن تست‌ها
+
+تست‌ها پورت‌ها را از `GATEWAY_PORT_BASE` می‌گیرند (conftest → 43000) تا worker زندهٔ پنل
+(41000-41999) با تست‌ها تداخل نکند. کل تست‌ها **با پنل و worker زندهٔ در حال اجرا** اجرا شد و
+سبز ماند (۱۵۷ passed، ۱ skipped).
+
+### تمرین‌های واقعی این دور
+
+| تمرین | نتیجه |
+|---|---|
+| backup زنده از دادهٔ واقعی | ۲۸ فایل · ۵۰.۹۹MB · `verify OK` · `PRAGMA integrity_check=ok` · ۴۰ Job در snapshot |
+| restore به پوشهٔ خالی | ۴۰ Job و ۲۴ فایل گالری بازیابی شد؛ uploadها (طبق طراحی) در بکاپ نیستند |
+| دوام Job در صف با ری‌استارت پنل | Job `queued` با `refs=1` و upload موجود پس از restart؛ سپس cancel و آزادسازی upload |
+| اجرای تست‌ها با worker زنده | ۱۵۷ passed، ۱ skipped (بدون تداخل پورت) |
+
+### اعتبارسنجی‌هایی که هنوز انجام نشده (صادقانه)
+
+- **۱۰ اکانت واقعی**: نیاز به ۱۰ اکانت/سرور واقعی؛ ابزار `capacity_report.py` آماده است.
+- **۲۴–۴۸ ساعت auto-login**: نیاز به گذشت زمان؛ فقط رفتار کوتاه‌مدت دیده شده.
+- **timerهای لینوکس**: فایل‌های systemd آماده‌اند ولی روی این ماشین (Windows) فعال نشده‌اند.

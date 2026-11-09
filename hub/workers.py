@@ -95,9 +95,18 @@ def port_available(ctx, port):
 
 
 def allocate_port(ctx):
+    """Pick a free worker port.
+
+    GATEWAY_PORT_BASE isolates tests (and a second dev instance) from the live panel's
+    41000-41999 range instead of racing it for ports.
+    """
+    try:
+        base = int(os.getenv("GATEWAY_PORT_BASE", "41000"))
+    except ValueError:
+        base = 41000
     with ctx.engine.connect() as c:
         used = {r[0] for r in c.execute(select(ctx.accounts.c.port))}
-    for p in range(41000, 42000):
+    for p in range(base, base + 1000):
         if p not in used and ctx.port_available(p):
             return p
     raise HTTPException(503, "No free local worker port.")

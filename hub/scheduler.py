@@ -21,6 +21,71 @@ class ProviderLimit(Exception):
 RESTART_BACKOFF_SEC = (30, 120, 600, 1800)
 MAX_RESTART_ATTEMPTS = 8
 
+# Gateway error kinds that prove nothing usable was delivered: validation/login/page-load/
+# composer-upload failures happen before the prompt is sent, and policy/refusal or an
+# explicit "generation failed" turn means the provider itself reported no image. These are
+# terminal failures, not upstream-uncertain outcomes. Anything else (timeout, server_error,
+# empty kind) stays `unknown` so it is never re-submitted automatically.
+CERTAIN_GATEWAY_FAILURE_KINDS = frozenset(
+    {
+        "invalid_request",
+        "unauthorized",
+        "page_load_failed",
+        "login_failed",
+        "login_required",
+        "upload_failed",
+        "queue_full",
+        "policy_violation",
+        "refused",
+        "image_generation_failed",
+        "generation_failed",
+    }
+)
+
+
+def parse_gateway_failure(status, data):
+    """Extract error_kind/message/login_blocker from a gateway error body.
+
+    The gateway returns these at the top level; older builds only had `error.message`, so
+    a couple of narrow message fallbacks keep the classification useful after upgrades.
+    Deliberately conservative: an unknown kind must stay unknown.
+    """
+    body = data if isinstance(data, dict) else {}
+    error = body.get("error") if isinstance(body.get("error"), dict) else {}
+    kind = str(body.get("error_kind") or "").strip().lower()
+    message = str(error.get("message") or "").strip()
+    blocker = str(body.get("login_blocker") or "").strip()
+    if not kind and message:
+        lowered = message.lower()
+        if "page did not load" in lowered or "content failed to load" in lowered:
+            kind = "page_load_failed"
+        elif "not logged in" in lowered or "login required" in lowered:
+            kind = "login_failed"
+        elif "upload failed" in lowered or "could not attach" in lowered:
+            kind = "upload_failed"
+    return {
+        "status": int(status),
+        "kind": kind,
+        "message": message[:300],
+        "blocker": blocker[:120],
+        "certain_failure": kind in CERTAIN_GATEWAY_FAILURE_KINDS,
+    }
+
+
+def gateway_failure_text(failure):
+    label = failure["kind"] or "gateway_error"
+    detail = f"Gateway {label} (HTTP {failure['status']})"
+    if failure["message"]:
+        detail += f": {failure['message']}"
+    if failure["blocker"]:
+        detail += f" [login blocker: {failure['blocker']}]"
+    if failure["certain_failure"]:
+        detail += ". Nothing was delivered to the gallery; safe to re-submit this prompt."
+    else:
+        detail += ". Outcome uncertain; check the account manually before retry."
+    return detail[:350]
+
+
 
 def execute_job(ctx, job_id, acc, prompt, aspect, quality_preference, n=1):
     """Run once. No automatic replay after uncertain upstream outcomes."""
@@ -123,29 +188,29 @@ def execute_job(ctx, job_id, acc, prompt, aspect, quality_preference, n=1):
                 )
             return
         if r.status_code >= 500:
+            failure = parse_gateway_failure(r.status_code, r.data)
+            detail = gateway_failure_text(failure)
+            state = "failed" if failure["certain_failure"] else "unknown"
+            print(
+                f"[gateway] job {str(job_id)[:8]} HTTP {r.status_code} kind={failure['kind'] or '?'} -> {state}",
+                file=sys.stderr,
+            )
             with ctx.engine.begin() as conn:
                 conn.execute(
                     update(ctx.jobs)
                     .where(ctx.jobs.c.id == job_id)
-                    .values(
-                        status="unknown",
-                        error="Gateway server failure after submission; outcome unknown. Check manually before retry.",
-                        finished_at=ctx.now(),
-                    )
+                    .values(status=state, error=detail, finished_at=ctx.now())
                 )
             return
         if r.status_code >= 400:
-            try:
-                error = (r.data or {}).get("error", {})
-                detail = (
-                    error.get("message", "Gateway rejected image request")
-                    if isinstance(error, dict)
-                    else str(error)
-                )
-                kind = error.get("error_kind", "") if isinstance(error, dict) else ""
-            except Exception:
-                detail = f"Gateway HTTP {r.status_code}"
-                kind = ""
+            failure = parse_gateway_failure(r.status_code, r.data)
+            detail = (
+                failure["message"]
+                or f"Gateway rejected the image request ({failure['kind'] or 'HTTP ' + str(r.status_code)})."
+            )
+            if failure["blocker"]:
+                detail += f" [login blocker: {failure['blocker']}]"
+            kind = failure["kind"]
             if r.status_code == 429 or kind == "rate_limit":
                 retry_after = r.headers.get("retry-after", "")
                 try:

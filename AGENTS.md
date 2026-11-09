@@ -98,6 +98,22 @@ The docs above are the current description. Older versioned documents were remov
   release the job's upload workspace. Half-written `.incoming-*` workspaces are swept after
   one hour even when retention is disabled.
 
+## Failure classification and operator tooling
+
+- A gateway HTTP 5xx must be classified from its body (`error_kind`/`login_blocker`/message),
+  not blanket `unknown`: page-load, login, composer-upload, validation, policy/refusal and
+  explicit `generation_failed` outcomes are known failures and become `failed` with the real
+  reason; only `timeout`, `server_error` and an unparseable/empty kind stay `unknown`. Never
+  auto-retry either state.
+- `scripts/resolve_unknown.py` is the only bulk reconciliation path: read-only by default,
+  mutates only with `--yes`, only for still-unresolved `unknown` jobs. Resolving a job
+  releases its reference workspace; the resolve endpoint remains one-shot and audited.
+- `scripts/doctor.py` must warn when an installed worker workspace lacks the
+  `ninja:fast-prompt-insert` marker or when a running gateway's `RENDER_WAIT_SEC` differs from
+  the `render_wait_sec` setting; warnings must not fail the doctor (exit 0).
+- Tests allocate worker ports from `GATEWAY_PORT_BASE` (default 41000; tests use 43000) so a
+  live panel's workers cannot collide with a test run.
+
 ## File pipeline
 
 - Preserve original bytes; previews are derived and separate. Never substitute a preview for an original download.
@@ -137,7 +153,7 @@ The docs above are the current description. Older versioned documents were remov
 ## Required checks
 
 ```bash
-python -m pytest -q          # 142 passed, 1 skipped (skip = symlink test on unprivileged Windows)
+python -m pytest -q          # 157 passed, 1 skipped (skip = symlink test on unprivileged Windows)
 node --test tests/frontend.test.mjs
 node --check frontend/app.js # plus all frontend modules and preview/demo.js
 python scripts/doctor.py     # exit 0 = ready

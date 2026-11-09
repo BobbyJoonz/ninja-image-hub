@@ -245,6 +245,10 @@ def resolve_job(ctx, job_id: str, body: ResolveBody):
     ctx.record_audit(
         "job.resolve", {"job_id": job_id, "resolution": body.resolution}
     )
+    # A reconciled job is closed: its reference workspace is no longer needed. Keeping it
+    # would leak private reference bytes until the retention sweep (or forever when
+    # retention is disabled), and the operator already made the delivery decision.
+    ctx.release_upload(row["reference_upload_id"])
     return ctx.job_detail(job_id)
 
 
