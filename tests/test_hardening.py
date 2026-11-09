@@ -101,7 +101,10 @@ def test_worker_env_excludes_parent_secrets(monkeypatch):
     ctx = SimpleNamespace(
         VENDOR=Path("/vendor/gateway"),
         DATA=Path("/data"),
-        setting=lambda key: {"gateway_max_tabs": 3, "max_batch_images": 4}[key],
+        setting=lambda key: {
+            "gateway_max_tabs": 3,
+            "max_batch_images": 4,
+        }.get(key, 0),
     )
     acc = {"id": "acc-1", "port": 41005, "api_secret": "worker-secret"}
     env = worker_env(ctx, acc)
@@ -1155,6 +1158,36 @@ def test_live_view_page_and_input_endpoint(loaded):
         f"/api/accounts/{acc['id']}/remote/input", json={"events": []}, headers=h
     )
     assert res.status_code == 200 and res.json()["applied"] == 0
+
+
+
+def test_image_failure_patch_marks_generation_failed(tmp_path):
+    """'Image generation failed' must beat the image count (stale image trap)."""
+    import shutil
+
+    from hub.workers import _patch_image_failure_detect
+
+    worker = tmp_path / "gateway"
+    (worker / "src" / "routes").mkdir(parents=True)
+    shutil.copy("vendor/gpt-web-gateway/src/chatgpt.js", worker / "src" / "chatgpt.js")
+    shutil.copy(
+        "vendor/gpt-web-gateway/src/routes/images.js",
+        worker / "src" / "routes" / "images.js",
+    )
+    assert _patch_image_failure_detect(worker) is True
+    chatgpt = (worker / "src" / "chatgpt.js").read_text(encoding="utf-8", errors="replace")
+    assert "return 'generation_failed'" in chatgpt
+    assert "progress.generationFailed" in chatgpt
+    assert "image_generation_failed" in chatgpt
+    images = (worker / "src" / "routes" / "images.js").read_text(
+        encoding="utf-8", errors="replace"
+    )
+    assert "image_generation_failed: 422" in images
+    assert _patch_image_failure_detect(worker) is False
+
+    # Unknown upstream: leave the file untouched.
+    (worker / "src" / "chatgpt.js").write_text("// changed upstream\n", encoding="utf-8")
+    assert _patch_image_failure_detect(worker) is False
 
 
 def test_worker_command_gives_every_linux_worker_its_own_xvfb():

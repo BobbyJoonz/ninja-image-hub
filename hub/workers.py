@@ -879,6 +879,111 @@ def _patch_launch_args(worker):
     return True
 
 
+IMAGE_FAILURE_MARKER = "ninja:image-failure-detect"
+
+
+def _patch_image_failure_detect(worker):
+    """Treat ChatGPT's 'Image generation failed' card as a failure, not a success.
+
+    The failed turn can still render a large <img>, so the plain image count in
+    imageOutcomePredicate would report success and a stale/failed image could be
+    delivered. Detection is textual, scoped to the newest assistant turn and
+    guarded/idempotent; an upstream change simply skips the patch.
+    """
+    chatgpt = pathlib.Path(worker) / "src" / "chatgpt.js"
+    images = pathlib.Path(worker) / "src" / "routes" / "images.js"
+    if not chatgpt.is_file() or not images.is_file():
+        return False
+    content = chatgpt.read_text(encoding="utf-8")
+    if IMAGE_FAILURE_MARKER in content:
+        return False
+
+    success_anchor = "  // --- Success -------------------------------------------------------------------------"
+    failure_probe = (
+        "  // ninja:image-failure-detect — provider-side failure must beat the image count: "
+        "the failed card\n"
+        "  // can contain a large <img>, and a stale image must never look like success.\n"
+        "  if (tailChanged) {\n"
+        "    const failedPhrases = ['image generation failed', 'generation failed', "
+        "'не удалось создать изображение', 'не удалось сгенерировать изображение'];\n"
+        "    if (failedPhrases.some((phrase) => isNew(phrase))) return 'generation_failed';\n"
+        "  }\n\n"
+    )
+    if content.count(success_anchor) != 1:
+        return False
+    content = content.replace(success_anchor, failure_probe + success_anchor, 1)
+
+    # readProgressIndicators: detect the same failure during adaptive waits.
+    progress_anchor = "    const refusal = /i'm not able to|i am not able to|i can't|i cannot|unable to (generate|create|edit|help)|can't help|cannot help|i won't|i will not|не могу|не получится|не в состоянии/i;"
+    if content.count(progress_anchor) != 1:
+        return False
+    content = content.replace(
+        progress_anchor,
+        progress_anchor
+        + "\n    const generationFailed = /image generation failed|generation failed|"
+        "не удалось (создать|сгенерировать) изображение/i;",
+        1,
+    )
+    content = content.replace(
+        "      refusalLikely: false,\n      activeGeneration: stopBtn || activeText,",
+        "      refusalLikely: false,\n      generationFailed: isNewMatch(generationFailed),\n      activeGeneration: stopBtn || activeText,",
+        1,
+    )
+
+    adaptive_anchor = "            if (progress.refusalLikely) {"
+    if content.count(adaptive_anchor) != 1:
+        return False
+    content = content.replace(
+        adaptive_anchor,
+        "            if (progress.generationFailed) {\n"
+        "              clearInterval(waitInterval);\n"
+        "              await saveDebugSnapshot(p, 'generation_failed').catch(() => {});\n"
+        "              throw buildError('image_generation_failed', "
+        "'ChatGPT reported \"Image generation failed\" — no image was produced', "
+        "await readLastAssistantMessage(p));\n"
+        "            }\n"
+        + adaptive_anchor,
+        1,
+    )
+
+    # Result handling (non-success outcome map).
+    content = content.replace(
+        "      refused: 'ChatGPT refused to generate this image',",
+        '''      refused: 'ChatGPT refused to generate this image',
+      generation_failed:
+        'ChatGPT reported "Image generation failed" — no usable image was produced. Open the chat and press Try again, or retry the job.',''',
+        1,
+    )
+    content = content.replace(
+        "    if (result_type === 'policy' || result_type === 'refused') {",
+        "    if (result_type === 'policy' || result_type === 'refused' || result_type === 'generation_failed') {",
+        1,
+    )
+    content = content.replace(
+        "    const codeMap = { policy: 'policy_violation', refused: 'refused', limit: limitKind };",
+        "    const codeMap = { policy: 'policy_violation', refused: 'refused', limit: limitKind, generation_failed: 'image_generation_failed' };",
+        1,
+    )
+    content = content.replace(
+        "      refused: tail || '',",
+        "      refused: tail || '',\n      generation_failed: tail || '',",
+        1,
+    )
+
+    images_content = images.read_text(encoding="utf-8")
+    images_content = images_content.replace(
+        "  const statusByKind = {\n    refused: 422,",
+        "  const statusByKind = {\n    refused: 422,\n"
+        "    // Definitive provider-side failure: the image was not produced. 422 means\n"
+        "    // 'do not auto-retry' for shipped clients, which is what we want.\n"
+        "    image_generation_failed: 422,",
+        1,
+    )
+    chatgpt.write_text(content, encoding="utf-8")
+    images.write_text(images_content, encoding="utf-8")
+    return True
+
+
 def ensure_worker_copy(ctx, acc):
     if not ctx.runtime_installed():
         raise RuntimeError(
@@ -913,6 +1018,7 @@ def ensure_worker_copy(ctx, acc):
     _patch_settings_probe(worker)
     _patch_live_view(worker)
     _patch_launch_args(worker)
+    _patch_image_failure_detect(worker)
     _patch_fast_prompt_insert(worker)
     return worker
 
@@ -998,6 +1104,7 @@ def worker_env(ctx, acc):
             "MAX_CONCURRENT_JOBS": str(ctx.setting("gateway_max_tabs")),
             "MAX_QUEUE_SIZE": "2",
             "MAX_BATCH_N": str(ctx.setting("max_batch_images")),
+            "RENDER_WAIT_SEC": str(ctx.setting("render_wait_sec")),
             "MIN_TURN_STAGGER_SEC": "10",
             "MIN_JOB_GAP_SEC": "60",
             "CHATGPT_EMAIL": (auto or {}).get("email", ""),
