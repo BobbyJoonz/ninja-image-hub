@@ -164,45 +164,80 @@ function clearReferenceFiles() {
   renderFileChips();
 }
 
-async function referencePreviewUrl(file) {
-  // A 16 MP reference decoded at 34 px in the chip would keep the full bitmap in browser
-  // memory (10 references ≈ hundreds of MB). Draw one small JPEG preview instead, one
-  // image at a time, and let the full-size File be uploaded unchanged.
+async function prepareReference(file, optimize) {
+  // Decode once per file, sequentially: draw a 96 px chip preview, and (optionally)
+  // downscale large references to <=2048 px WebP before they are uploaded. The original
+  // File is only replaced when the optimized blob is actually smaller; turning the toggle
+  // off uploads the selected bytes unchanged.
+  const prepared = {
+    file,
+    name: file.name,
+    size: file.size,
+    lastModified: file.lastModified,
+    originalName: file.name,
+    originalSize: file.size,
+    originalLastModified: file.lastModified,
+    optimizedFrom: null,
+    previewUrl: null,
+  };
   try {
     if (typeof createImageBitmap === "function" && typeof document === "object") {
       const bitmap = await createImageBitmap(file);
-      const scale = Math.max(
-        1,
-        Math.max(bitmap.width, bitmap.height) / 96,
-      );
-      const width = Math.max(1, Math.round(bitmap.width / scale));
-      const height = Math.max(1, Math.round(bitmap.height / scale));
-      const canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
-      canvas.getContext("2d").drawImage(bitmap, 0, 0, width, height);
+      const maxEdge = Math.max(bitmap.width, bitmap.height);
+      if (optimize && (maxEdge > 2048 || file.size > 2.5 * 1024 * 1024)) {
+        const scale = Math.min(1, 2048 / maxEdge);
+        const width = Math.max(1, Math.round(bitmap.width * scale));
+        const height = Math.max(1, Math.round(bitmap.height * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext("2d").drawImage(bitmap, 0, 0, width, height);
+        const blob = await new Promise((resolve) =>
+          canvas.toBlob(resolve, "image/webp", 0.85),
+        );
+        if (blob && blob.size < file.size) {
+          const base =
+            (file.name || "reference").replace(/\.[^.]+$/, "") || "reference";
+          const optimized = new File([blob], base + ".webp", {
+            type: "image/webp",
+            lastModified: file.lastModified,
+          });
+          prepared.file = optimized;
+          prepared.name = optimized.name;
+          prepared.size = optimized.size;
+          prepared.optimizedFrom = file.size;
+        }
+      }
+      const previewScale = Math.max(1, maxEdge / 96);
+      const previewWidth = Math.max(1, Math.round(bitmap.width / previewScale));
+      const previewHeight = Math.max(1, Math.round(bitmap.height / previewScale));
+      const previewCanvas = document.createElement("canvas");
+      previewCanvas.width = previewWidth;
+      previewCanvas.height = previewHeight;
+      previewCanvas.getContext("2d").drawImage(bitmap, 0, 0, previewWidth, previewHeight);
       if (typeof bitmap.close === "function") bitmap.close();
-      const blob = await new Promise((resolve) =>
-        canvas.toBlob(resolve, "image/jpeg", 0.72),
+      const preview = await new Promise((resolve) =>
+        previewCanvas.toBlob(resolve, "image/jpeg", 0.72),
       );
-      if (blob) return URL.createObjectURL(blob);
+      if (preview) prepared.previewUrl = URL.createObjectURL(preview);
     }
   } catch {
     /* older browser or a corrupt file: fall back to the original object URL */
   }
-  return URL.createObjectURL(file);
+  if (!prepared.previewUrl) prepared.previewUrl = URL.createObjectURL(prepared.file);
+  return prepared;
 }
 
 function renderFileChips() {
   if (!fileChips) return;
   fileChips.innerHTML = S.referenceFiles
     .map(
-      (file, index) =>
+      (item, index) =>
         `<span class="file-chip">${
-          file.previewUrl
-            ? `<img src="${file.previewUrl}" alt="" width="34" height="34" />`
+          item.previewUrl
+            ? `<img src="${item.previewUrl}" alt="" width="34" height="34" />`
             : ""
-        }<span class="file-meta"><strong title="${escAttr(file.name)}">${escAttr(file.name)}</strong><small>${humanBytes(file.size)}</small></span><button type="button" data-file-index="${index}" aria-label="Remove ${escAttr(file.name)}">${uiIcon("x")}</button></span>`,
+        }<span class="file-meta"><strong title="${escAttr(item.originalName)}">${escAttr(item.originalName)}</strong><small>${humanBytes(item.size)}${item.optimizedFrom ? ` · optimized from ${humanBytes(item.optimizedFrom)}` : ""}</small></span><button type="button" data-file-index="${index}" aria-label="Remove ${escAttr(item.originalName)}">${uiIcon("x")}</button></span>`,
     )
     .join("");
 }
@@ -247,26 +282,28 @@ async function addReferenceFiles(list) {
   const merged = [...S.referenceFiles];
   const added = [];
   for (const file of list) {
-    if (
-      !merged.some(
-        (f) =>
-          f.name === file.name &&
-          f.size === file.size &&
-          f.lastModified === file.lastModified,
-      )
-    ) {
-      merged.push(file);
-      added.push(file);
-    }
-  }
-  const error = validateSelection(merged);
-  if (error) {
-    toast(error, true);
-    return;
+    const duplicate = merged.some(
+      (item) =>
+        item.originalName === file.name &&
+        item.originalSize === file.size &&
+        item.originalLastModified === file.lastModified,
+    );
+    if (!duplicate) added.push(file);
   }
   referenceBusy = true;
   try {
-    for (const file of added) file.previewUrl = await referencePreviewUrl(file);
+    for (const file of added) {
+      merged.push(await prepareReference(file, S.optimizeReferences !== false));
+    }
+    const error = validateSelection(merged.map((item) => item.file));
+    if (error) {
+      toast(error, true);
+      for (const item of merged) {
+        if (!S.referenceFiles.includes(item) && item.previewUrl)
+          URL.revokeObjectURL(item.previewUrl);
+      }
+      return;
+    }
     S.referenceFiles = merged;
     renderFileChips();
   } finally {
@@ -307,6 +344,32 @@ if (fileChips) {
     renderFileChips();
   });
 }
+const optimizeToggle = $("optimizeRefs");
+try {
+  S.optimizeReferences =
+    localStorage.getItem("ninja.optimizeReferences") === "1";
+} catch {
+  S.optimizeReferences = false;
+}
+if (optimizeToggle) {
+  optimizeToggle.checked = S.optimizeReferences;
+  optimizeToggle.addEventListener("change", () => {
+    S.optimizeReferences = optimizeToggle.checked;
+    try {
+      localStorage.setItem(
+        "ninja.optimizeReferences",
+        S.optimizeReferences ? "1" : "0",
+      );
+    } catch {
+      /* storage may be disabled */
+    }
+    toast(
+      S.optimizeReferences
+        ? "Large references will be resized to WebP before upload."
+        : "References will be uploaded exactly as selected.",
+    );
+  });
+}
 // An ambiguous submission (network drop, timeout) must be retried with the SAME
 // idempotency key. Keeping it only in memory lost the key on reload, so a retry minted
 // a new key and produced a duplicate job. sessionStorage survives a reload in this tab.
@@ -340,7 +403,7 @@ $("generateForm").addEventListener("submit", async (e) => {
     n: Number($("genCount").value),
   };
   const fileSignature = S.referenceFiles
-    .map((file) => `${file.name}:${file.size}:${file.lastModified}`)
+    .map((item) => `${item.name}:${item.size}:${item.lastModified}`)
     .join("|");
   const fingerprint = JSON.stringify({ ...payload, files: fileSignature });
   S.pendingGeneration = S.pendingGeneration || loadPendingGeneration();
@@ -352,7 +415,7 @@ $("generateForm").addEventListener("submit", async (e) => {
     if (S.referenceFiles.length && !uploadId) {
       button.innerHTML = `Uploading ${S.referenceFiles.length} image(s)…`;
       const form = new FormData();
-      for (const file of S.referenceFiles) form.append("files", file);
+      for (const item of S.referenceFiles) form.append("files", item.file, item.name);
       const uploaded = await apiUpload("/api/uploads", form);
       uploadId = uploaded.upload_id;
       S.pendingGeneration.uploadId = uploadId;

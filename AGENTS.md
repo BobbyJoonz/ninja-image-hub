@@ -85,6 +85,15 @@ The docs above are the current description. Older versioned documents were remov
   its idempotence marker; after an upgrade, workers must be Stop→Start-ed to receive it.
 - Browser previews for references must stay bounded (96 px thumbnails); never hold ten
   decoded full-resolution images in the DOM. The uploaded File/bytes stay untouched.
+- Reference downscaling is **opt-in** and client-side only (explicit `optimizeRefs` toggle,
+  ≤2048 px WebP, only when the result is smaller). The server never re-encodes; with the
+  toggle off the selected bytes are uploaded unchanged.
+- `render_wait_sec` is a hard cap on the post-generation render wait (default 8, min 3, max
+  60) passed to the gateway as `RENDER_WAIT_SEC`. It replaced a fixed 15 s sleep; the
+  extraction path already polls until the image is usable, so lowering it is safe but must
+  be re-verified after gateway upgrades. An adaptive DOM-readiness probe was tried and
+  rejected: with backend read/canvas extraction the assistant image is not a stable
+  full-size `<img>` early enough, so the probe only ever hit the cap.
 - Canceling a queued job, deleting a settled/unknown job and purging an account must all
   release the job's upload workspace. Half-written `.incoming-*` workspaces are swept after
   one hour even when retention is disabled.
@@ -128,7 +137,7 @@ The docs above are the current description. Older versioned documents were remov
 ## Required checks
 
 ```bash
-python -m pytest -q          # 140 passed, 1 skipped (skip = symlink test on unprivileged Windows)
+python -m pytest -q          # 142 passed, 1 skipped (skip = symlink test on unprivileged Windows)
 node --test tests/frontend.test.mjs
 node --check frontend/app.js # plus all frontend modules and preview/demo.js
 python scripts/doctor.py     # exit 0 = ready

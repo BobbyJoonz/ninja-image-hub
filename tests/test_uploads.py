@@ -648,8 +648,14 @@ def test_sweep_cleans_half_written_workspaces(loaded):
 
 def test_reference_thumbnails_are_bounded_in_the_browser():
     app = (ROOT / "frontend" / "app.js").read_text(encoding="utf-8")
+    html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
     assert "createImageBitmap" in app
-    assert "referencePreviewUrl" in app
+    assert "prepareReference" in app
     assert "bitmap.close" in app
-    # The uploaded File object must stay untouched; only the chip preview is resized.
-    assert "resizeWidth" not in app  # we scale by canvas, keeping aspect ratio
+    # Opt-in client-side downscale: explicit toggle, <=2048 px, WebP output.
+    assert "optimizeRefs" in app and "image/webp" in app and "2048" in app
+    assert 'id="optimizeRefs"' in html
+    # The uploaded File is only replaced when the optimized blob is smaller; turning the
+    # toggle off keeps the selected bytes untouched (server still never re-encodes).
+    assert "blob.size < file.size" in app
+

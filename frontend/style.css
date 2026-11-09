@@ -2875,3 +2875,36 @@ body.booting .stat-value {
   outline: 2px solid #b9f85c;
   outline-offset: 2px;
 }
+
+
+/* ---------- Reference optimization toggle ---------- */
+.toggle-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 12px 0 2px;
+  padding: 10px 12px;
+  border: 1px solid #2e4964;
+  border-radius: 10px;
+  background: #0f1e30;
+  cursor: pointer;
+}
+.toggle-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  accent-color: #b9f85c;
+  flex: 0 0 16px;
+}
+.toggle-row strong {
+  display: block;
+  color: #dbe9f7;
+  font-size: 12px;
+}
+.toggle-row small {
+  display: block;
+  color: #93a9c0;
+  font-size: 11px;
+  margin-top: 3px;
+  line-height: 1.5;
+}

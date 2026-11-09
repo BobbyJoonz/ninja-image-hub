@@ -540,6 +540,19 @@
                         retried or hidden</small
                       ></label
                     >
+                    <label
+                      >Max image render wait (s)<input
+                        name="render_wait_sec"
+                        type="number"
+                        min="3"
+                        max="60"
+                        step="1"
+                        required
+                      /><small
+                        >Upper bound for the adaptive wait; the worker continues
+                        as soon as the image has loaded</small
+                      ></label
+                    >
                     <div class="control-actions">
                       <p id="controlDirty" class="fine-print">
                         Choose safe values and save. Existing requests are not
@@ -684,6 +697,17 @@
                     </div>
                   </div>
                   <div id="fileChips" class="file-chips" aria-live="polite"></div>
+                  <label class="toggle-row" for="optimizeRefs">
+                    <input id="optimizeRefs" type="checkbox" />
+                    <span
+                      ><strong>Optimize large references</strong
+                      ><small
+                        >Images above 2048 px (or 2.5 MiB) are resized to WebP
+                        before upload; turn off to upload the originals
+                        byte-for-byte.</small
+                      ></span
+                    >
+                  </label>
                   <p class="fine-print" id="fileHint">
                     References are attached to the prompt at High effort. Each
                     generation gets the same images; they are deleted from this

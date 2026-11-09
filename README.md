@@ -10,7 +10,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Node.js](https://img.shields.io/badge/node-22%2B-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![SQLite](https://img.shields.io/badge/SQLite-WAL-003B57?logo=sqlite&logoColor=white)](https://www.sqlite.org/wal.html)
-[![Tests](https://img.shields.io/badge/tests-128%20passed%20%C2%B7%201%20skipped-2ea043)](#verification)
+[![Tests](https://img.shields.io/badge/tests-142%20passed%20%C2%B7%201%20skipped-2ea043)](#verification)
 [![Accounts](https://img.shields.io/badge/accounts-1%20to%2016-8957e5)](#multi-account-model)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-linux%20%7C%20windows-6e7681)](#quick-start)
@@ -78,6 +78,19 @@ validated by magic bytes server-side and configurable in Operations. Uploads are
 (`data/uploads/<uuid>/`, mode 0600), never re-encoded, referenced by one job, and deleted
 when that job settles — except `unknown`, which is kept for reconciliation and swept after
 `upload_retention_hours`.
+
+**Reference performance.** Attaching references forces ChatGPT's composer into the
+per-key typing path (attachments are wiped by `fill()`), which measured ~30 ms per character
+on this host: a 3,126-character prompt took **95.5 s** just to type. The bundled worker patch
+switches that path to one CDP `insertText` call (fail-open: the upstream verification still
+falls back to typing), so the same prompt now types in **0.76 s** and the whole gateway
+request dropped from **144.9 s to 74.0 s**. Studio chips render 96 px thumbnails instead of
+decoding ten full-resolution images in the browser. The old fixed 15 s render sleep is now a
+configurable hard cap (`render_wait_sec`, default 8 s; a real job at 5 s completed in 54 s).
+An opt-in Studio toggle downscales large references to <=2048 px WebP before upload
+(measured 4.1 MiB PNG -> 1.0 MiB WebP; two references 8.2 -> 2.1 MiB); it is off by default,
+so the selected bytes are uploaded unchanged unless enabled. Uploads stream to disk: 40 MiB
+of references are stored in ~0.56 s with the panel's RSS unchanged (+0.1 MiB).
 
 ### Why this exists
 
@@ -383,6 +396,7 @@ All of these are **live** unless marked *restart*. Every change requires admin s
 | `upload_max_file_mb` | `20` | 1–50 | next upload | Per-file cap; 20 matches the ChatGPT composer, 50 the gateway envelope |
 | `upload_max_total_mb` | `50` | 1–200 | next upload | Combined bytes per upload; above ~50 MiB raises gateway RAM use |
 | `upload_retention_hours` | `24` | 0–720 | hourly sweep | Delete orphaned upload workspaces; `0` disables. Terminal jobs clean up immediately |
+| `render_wait_sec` | `8` | 3–60 | next start | Hard cap for the image-render wait; the worker continues as soon as the image is extracted (upstream used a fixed 15 s) |
 | `min_free_memory_mb` | `600` | 0–65536 | next start | Refuse to start a browser when free RAM is below this; `0` disables the guard |
 | `dispatch_paused` | `0` | 0/1 | next tick | Pause **new** dispatch only; running jobs finish, queued jobs are kept |
 
@@ -398,7 +412,7 @@ All of these are **live** unless marked *restart*. Every change requires admin s
 | `COOKIE_SECURE` | optional | `true` when the panel is behind HTTPS |
 | `DATA_DIR` | optional | Data root (default `./data`) |
 | `DATABASE_URL` | optional | SQLite by default; PostgreSQL is *not* validated |
-| `GLOBAL_MAX_INFLIGHT`, `GATEWAY_MAX_TABS`, `MAX_PENDING_JOBS`, `MAX_BATCH_IMAGES`, `PROVIDER_COOLDOWN_MINUTES`, `MAX_RUNNING_ACCOUNTS`, `IDLE_WORKER_SHUTDOWN_MINUTES`, `MIN_FREE_MEMORY_MB`, `PREVIEW_RETENTION_DAYS`, `EXPORT_RETENTION_HOURS`, `WORKER_LOG_MAX_MB`, `MIN_FREE_DISK_MB`, `THINKING_EFFORT`, `UPLOAD_MAX_FILES`, `UPLOAD_MAX_FILE_MB`, `UPLOAD_MAX_TOTAL_MB`, `UPLOAD_RETENTION_HOURS` | optional | Seed values for a **fresh** database only; afterwards the DB/panel wins |
+| `GLOBAL_MAX_INFLIGHT`, `GATEWAY_MAX_TABS`, `MAX_PENDING_JOBS`, `MAX_BATCH_IMAGES`, `PROVIDER_COOLDOWN_MINUTES`, `MAX_RUNNING_ACCOUNTS`, `IDLE_WORKER_SHUTDOWN_MINUTES`, `MIN_FREE_MEMORY_MB`, `PREVIEW_RETENTION_DAYS`, `EXPORT_RETENTION_HOURS`, `WORKER_LOG_MAX_MB`, `MIN_FREE_DISK_MB`, `THINKING_EFFORT`, `UPLOAD_MAX_FILES`, `UPLOAD_MAX_FILE_MB`, `UPLOAD_MAX_TOTAL_MB`, `UPLOAD_RETENTION_HOURS`, `RENDER_WAIT_SEC` | optional | Seed values for a **fresh** database only; afterwards the DB/panel wins |
 
 ### C. CLI scripts
 
@@ -560,7 +574,7 @@ Guardrails:
 ## Verification
 
 ```bash
-python -m pytest -q                     # 140 passed, 1 skipped  (~96 s)
+python -m pytest -q                     # 142 passed, 1 skipped  (~96 s)
 node --test tests/frontend.test.mjs     # 6 passed
 node --check frontend/app.js            # + all modules + preview/demo.js
 python scripts/doctor.py                # exit 0 = ready

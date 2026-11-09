@@ -84,6 +84,7 @@ def settings(ctx):
         "effort_mixed_24h": _effort_counts(ctx)[1],
         "upload_limits": uploads.limits(ctx),
         "upload_retention_hours": ctx.setting("upload_retention_hours"),
+        "render_wait_sec": ctx.setting("render_wait_sec"),
         "upload_usage": uploads.usage(ctx),
         "disk_free_mb": _disk_free_mb(ctx),
         "disk_low": _disk_low(ctx),
@@ -117,7 +118,7 @@ def health(ctx):
     disk_low = _disk_low(ctx)
     return {
         "ok": True,
-        "version": "0.10.0",
+        "version": "0.11.0",
         "gateway_installed": ctx.runtime_installed(),
         "accounts": accounts_total,
         "running_workers": alive,

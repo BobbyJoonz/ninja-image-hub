@@ -271,6 +271,7 @@ export function renderSettings() {
     ["Preview retention", s.preview_retention_days + " days"],
     ["Export retention", s.export_retention_hours + " hours"],
     ["Worker log limit", s.worker_log_max_mb + " MB"],
+    ["Render wait cap", (s.render_wait_sec ?? 15) + " s"],
     ["Image effort", (s.thinking_effort_label || s.thinking_effort || "High") + (s.effort_below_requested_24h ? " · " + s.effort_below_requested_24h + " fallback(s) in 24h" : "")],
     [
       "Reference uploads",

@@ -131,6 +131,8 @@ def initialize_controls(ctx):
         "upload_max_file_mb": (20, 1, 50, "UPLOAD_MAX_FILE_MB"),
         "upload_max_total_mb": (50, 1, 200, "UPLOAD_MAX_TOTAL_MB"),
         "upload_retention_hours": (24, 0, 720, "UPLOAD_RETENTION_HOURS"),
+        # Upper bound for the adaptive image-render wait (upstream default was a fixed 15 s).
+        "render_wait_sec": (8, 3, 60, "RENDER_WAIT_SEC"),
     }
 
     ctx.ENUM_CONTROLS = {

@@ -1,7 +1,30 @@
 """Adapters that keep reference jobs fast and fail open when upstream changes."""
+import importlib
+import sys
 from pathlib import Path
 
+import pytest
+from fastapi.testclient import TestClient
+
 from hub import workers
+
+
+@pytest.fixture()
+def loaded(tmp_path, monkeypatch):
+    monkeypatch.setenv("ADMIN_PASSWORD", "example-passphrase-123456789")
+    monkeypatch.setenv("APP_SECRET", "a" * 64)
+    monkeypatch.setenv("AGENT_API_KEY", "test-agent-key-98765")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///" + str(tmp_path / "hub.db"))
+    sys.modules.pop("app", None)
+    module = importlib.import_module("app")
+    ctx = module.app.state.hub
+    monkeypatch.setattr(ctx, "runtime_installed", lambda: True)
+    with TestClient(module.app) as client:
+        yield client, ctx
+    ctx.engine.dispose()
+    sys.modules.pop("app", None)
+
 
 ANCHOR = """      typedPerKey = true;
       await typeLines(text,
@@ -18,6 +41,17 @@ def _worker(tmp_path, body):
     (worker / "src").mkdir(parents=True)
     (worker / "src" / "chatgpt.js").write_text(body, encoding="utf-8")
     return worker
+
+
+def test_render_wait_setting_is_bounded(loaded):
+    client, _ = loaded
+    r = client.post("/api/auth/login", json={"password": "example-passphrase-123456789"})
+    h = {"x-csrf-token": r.json()["csrf"]}
+    assert client.get("/api/settings").json()["render_wait_sec"] == 8
+    assert client.patch("/api/control", json={"render_wait_sec": 2}, headers=h).status_code == 422
+    assert client.patch("/api/control", json={"render_wait_sec": 5}, headers=h).status_code == 200
+    assert client.patch("/api/control", json={"render_wait_sec": 70}, headers=h).status_code == 422
+    assert client.get("/api/settings").json()["render_wait_sec"] == 5
 
 
 def test_fast_prompt_insert_patch_is_idempotent(tmp_path):

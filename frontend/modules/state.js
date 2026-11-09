@@ -21,4 +21,5 @@ export const S = {
   jobsFilter: "all",
   jobQuery: "",
   referenceFiles: [],
+  optimizeReferences: false,
 };
