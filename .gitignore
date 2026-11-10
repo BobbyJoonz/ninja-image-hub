@@ -6,6 +6,7 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.ruff_cache/
 
 # Runtime data: database, originals, previews, exports, per-account workspaces
 /data/

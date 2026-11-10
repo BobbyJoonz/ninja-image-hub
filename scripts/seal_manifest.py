@@ -19,6 +19,7 @@ MANIFEST = ROOT / "MANIFEST_SHA256.json"
 SKIP_DIRS = {
     "__pycache__",
     ".pytest_cache",
+    ".ruff_cache",
     ".venv",
     "data",
     "vendor",
