@@ -318,6 +318,68 @@ def test_expired_upload_fails_before_any_upstream_request(loaded, monkeypatch):
     assert "expired before dispatch" in job["error"]
 
 
+def test_upload_sweep_is_age_and_usage_aware(loaded, tmp_path, monkeypatch):
+    client, ctx = loaded
+    h = auth(client)
+    old_upload = upload(client, h, [("old.png", png_bytes())]).json()["upload_id"]
+    fresh_upload = upload(client, h, [("new.png", png_bytes())]).json()["upload_id"]
+    import os
+    import time as _time
+
+    old_dir = ctx.DATA / "uploads" / old_upload
+    stamp = _time.time() - 3 * 86400
+    for path in old_dir.rglob("*"):
+        os.utime(path, (stamp, stamp))
+    os.utime(old_dir, (stamp, stamp))
+
+    assert ctx.sweep_uploads(24) == 1
+    assert not old_dir.exists()
+    assert (ctx.DATA / "uploads" / fresh_upload).exists()
+
+    # A live job pins its upload even when it looks old.
+    client.patch("/api/control", json={"dispatch_paused": True}, headers=h)
+    acc = client.post("/api/accounts", json={"name": "Pinned", "autostart": False}, headers=h).json()
+    pinned = upload(client, h, [("pin.png", png_bytes())]).json()["upload_id"]
+    client.post(
+        "/api/generate",
+        json={"account_id": acc["id"], "prompt": "pinned refs", "aspect_ratio": "1:1",
+              "upload_id": pinned, "idempotency_key": "refs-pin-0001"},
+        headers=h,
+    )
+    pin_dir = ctx.DATA / "uploads" / pinned
+    for path in pin_dir.rglob("*"):
+        os.utime(path, (stamp, stamp))
+    os.utime(pin_dir, (stamp, stamp))
+    assert ctx.sweep_uploads(24) == 0
+    assert pin_dir.exists()
+
+
+# ------------------------------------------------------------------ UI contract
+def test_upload_ui_contract():
+    html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
+    app = "\n".join(
+        (ROOT / "frontend" / name).read_text(encoding="utf-8")
+        for name in ("app.js", "modules/studio.js")
+    )
+    api = (ROOT / "frontend" / "modules" / "api.js").read_text(encoding="utf-8")
+    views = (ROOT / "frontend" / "modules" / "views.js").read_text(encoding="utf-8")
+    assert 'id="genFiles"' in html and 'multiple' in html
+    assert 'accept="image/png,image/jpeg,image/webp"' in html
+    assert "fileChips" in html and "fileLimits" in html
+    assert "apiUpload" in api and "apiUpload" in app
+    assert "reference_count" in views
+    css = all_css()
+    assert ".file-drop" in css and ".file-chip" in css
+
+# ------------------------------------------------------------------ deep-review additions
+def _noise_png(size=(700, 700)):
+    import os as _os
+
+    buffer = io.BytesIO()
+    raw = _os.urandom(size[0] * size[1] * 3)
+    Image.frombytes("RGB", size, raw).save(buffer, format="PNG")
+    return buffer.getvalue()
+
 
 def test_upload_meta_and_safe_names(loaded):
     client, ctx = loaded
