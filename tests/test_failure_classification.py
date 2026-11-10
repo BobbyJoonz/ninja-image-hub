@@ -14,7 +14,6 @@ from hub import execution
 
 def _failed_job(client, ctx, monkeypatch, response, account):
     h = auth(client)
-    client.post(f"/api/accounts/{account['id']}/start", headers=h)
     ctx.stop_scheduler()
     job = client.post(
         "/api/generate",

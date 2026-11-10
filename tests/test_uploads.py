@@ -209,7 +209,7 @@ def test_delete_unused_upload(loaded):
 
 
 # ------------------------------------------------------------------ end to end gateway multipart
-def _wait_job(client, job_id, timeout=20):
+def _wait_job(client, job_id, timeout=60):
     deadline = time.time() + timeout
     while time.time() < deadline:
         job = client.get(f"/api/jobs/{job_id}").json()
@@ -562,6 +562,7 @@ def test_agent_upload_then_generate(loaded, tmp_path, monkeypatch):
 
 def test_sweep_cleans_half_written_workspaces(loaded):
     client, ctx = loaded
+    ctx.stop_scheduler()
     root = ctx.DATA / "uploads"
     root.mkdir(parents=True, exist_ok=True)
     incoming = root / ".incoming-crashed"

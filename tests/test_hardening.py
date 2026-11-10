@@ -255,7 +255,9 @@ def test_idle_reaper_stops_a_worker_but_never_an_operator_stop(loaded, monkeypat
     monkeypatch.setattr(ctx, "setting", _settings(idle_worker_shutdown_minutes=1))
     proc = _FakeProc()
     ctx.processes[aid] = proc
-    ctx.account_activity[aid] = 0.0  # long idle (monotonic clock is large)
+    import time as _time
+
+    ctx.account_activity[aid] = _time.monotonic() - 3600  # idle for an hour
     assert ctx._reap_idle_workers() == 1
     assert proc.terminated is True
     assert aid not in ctx.processes
@@ -1157,6 +1159,9 @@ def test_image_failure_patch_marks_generation_failed(tmp_path):
     import shutil
 
     from hub.workers import _patch_image_failure_detect
+
+    if not (ROOT / "vendor" / "gpt-web-gateway" / "src" / "chatgpt.js").is_file():
+        pytest.skip("vendored gateway checkout is not installed (optional runtime)")
 
     worker = tmp_path / "gateway"
     (worker / "src" / "routes").mkdir(parents=True)
