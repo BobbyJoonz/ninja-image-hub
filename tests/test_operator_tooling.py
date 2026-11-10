@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from helpers import auth
 
 
 def _load(name):
@@ -16,29 +17,6 @@ def _load(name):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
-
-
-@pytest.fixture()
-def loaded(tmp_path, monkeypatch):
-    monkeypatch.setenv("ADMIN_PASSWORD", "example-passphrase-123456789")
-    monkeypatch.setenv("APP_SECRET", "a" * 64)
-    monkeypatch.setenv("AGENT_API_KEY", "test-agent-key-98765")
-    monkeypatch.setenv("DATA_DIR", str(tmp_path / "data"))
-    monkeypatch.setenv("DATABASE_URL", "sqlite:///" + str(tmp_path / "hub.db"))
-    sys.modules.pop("app", None)
-    module = importlib.import_module("app")
-    ctx = module.app.state.hub
-    monkeypatch.setattr(ctx, "runtime_installed", lambda: True)
-    with TestClient(module.app) as client:
-        yield client, ctx
-    ctx.engine.dispose()
-    sys.modules.pop("app", None)
-
-
-def auth(client):
-    r = client.post("/api/auth/login", json={"password": "example-passphrase-123456789"})
-    return {"x-csrf-token": r.json()["csrf"]}
-
 
 def _workspace(data, account_id, marker, wait=None):
     gateway = Path(data) / "accounts" / account_id / "gateway"

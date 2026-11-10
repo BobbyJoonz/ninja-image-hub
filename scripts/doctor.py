@@ -18,6 +18,10 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+try:
+    from hub.gateway_patches import FAST_INSERT_MARKER
+except Exception:  # noqa: BLE001 - doctor must still run before the package is importable
+    FAST_INSERT_MARKER = "ninja:fast-prompt-insert"
 RESULTS = []
 QUIET = False
 PORT_HINT = None
@@ -414,7 +418,7 @@ def worker_patch_issues(data_dir, running_envs=None, expected_wait=None):
                 }
             )
             continue
-        if "ninja:fast-prompt-insert" not in content:
+        if FAST_INSERT_MARKER not in content:
             issues.append(
                 {
                     "account": gateway.parent.name[:8],

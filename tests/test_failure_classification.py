@@ -9,33 +9,10 @@ from fastapi.testclient import TestClient
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-
-
-@pytest.fixture()
-def loaded(tmp_path, monkeypatch):
-    monkeypatch.setenv("ADMIN_PASSWORD", "example-passphrase-123456789")
-    monkeypatch.setenv("APP_SECRET", "a" * 64)
-    monkeypatch.setenv("AGENT_API_KEY", "test-agent-key-98765")
-    monkeypatch.setenv("DATA_DIR", str(tmp_path / "data"))
-    monkeypatch.setenv("DATABASE_URL", "sqlite:///" + str(tmp_path / "hub.db"))
-    sys.modules.pop("app", None)
-    module = importlib.import_module("app")
-    ctx = module.app.state.hub
-    monkeypatch.setattr(ctx, "runtime_installed", lambda: True)
-    with TestClient(module.app) as client:
-        yield client, ctx
-    ctx.engine.dispose()
-    sys.modules.pop("app", None)
-
-
-def auth(client):
-    response = client.post("/api/auth/login", json={"password": "example-passphrase-123456789"})
-    return {"x-csrf-token": response.json()["csrf"]}
-
+from helpers import auth
+from hub import execution
 
 def _failed_job(client, ctx, monkeypatch, response, account):
-    from hub import scheduler
-
     h = auth(client)
     client.post(f"/api/accounts/{account['id']}/start", headers=h)
     ctx.stop_scheduler()
@@ -46,7 +23,7 @@ def _failed_job(client, ctx, monkeypatch, response, account):
     ).json()
     monkeypatch.setattr(ctx, "process_state", lambda a: "running")
     monkeypatch.setattr(ctx, "upstream_probe", lambda a: True)
-    monkeypatch.setattr(scheduler, "request_generation", lambda *a, **k: response)
+    monkeypatch.setattr(execution, "request_generation", lambda *a, **k: response)
     ctx.execute_job(job["id"], ctx.query_account(account["id"]), "probe", "1:1", "draft", 1)
     return client.get(f"/api/jobs/{job['id']}").json()
 

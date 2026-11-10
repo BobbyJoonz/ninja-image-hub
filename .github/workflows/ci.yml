@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install Python deps + ruff
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt ruff
+      - name: Ruff (real errors only)
+        run: ruff check --select E9,F63,F7,F82 hub scripts tests
+      - name: Compile Python
+        run: python -m compileall -q hub scripts
+      - name: JavaScript syntax
+        run: |
+          for f in frontend/app.js frontend/modules/*.js preview/demo.js; do node --check "$f"; done
+      - name: Node tests
+        run: node --test tests/frontend.test.mjs
+      - name: Icon sprite
+        run: python scripts/build_icons.py --check
+      - name: Release seal
+        run: python scripts/seal_manifest.py --check
+      - name: Pure/offline test subset
+        run: >
+          python -m pytest -q
+          tests/test_hardening.py
+          tests/test_optimizations.py
+          tests/test_operator_tooling.py
+          tests/test_failure_classification.py
+          tests/test_delivery.py
+          tests/test_phase4.py
+
+  full-suite:
+    # Best-effort: full suite needs node, xvfb and can be slower/flakier on a bare runner.
+    # It is visible in the checks list but does not block a merge until it has a green
+    # baseline on this repository.
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install deps + xvfb
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          sudo apt-get update && sudo apt-get install -y xvfb
+      - name: Full pytest
+        env:
+          GATEWAY_PORT_BASE: "43000"
+        run: python -m pytest -q

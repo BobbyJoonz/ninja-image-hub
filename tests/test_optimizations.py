@@ -7,23 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from hub import workers
-
-
-@pytest.fixture()
-def loaded(tmp_path, monkeypatch):
-    monkeypatch.setenv("ADMIN_PASSWORD", "example-passphrase-123456789")
-    monkeypatch.setenv("APP_SECRET", "a" * 64)
-    monkeypatch.setenv("AGENT_API_KEY", "test-agent-key-98765")
-    monkeypatch.setenv("DATA_DIR", str(tmp_path / "data"))
-    monkeypatch.setenv("DATABASE_URL", "sqlite:///" + str(tmp_path / "hub.db"))
-    sys.modules.pop("app", None)
-    module = importlib.import_module("app")
-    ctx = module.app.state.hub
-    monkeypatch.setattr(ctx, "runtime_installed", lambda: True)
-    with TestClient(module.app) as client:
-        yield client, ctx
-    ctx.engine.dispose()
-    sys.modules.pop("app", None)
+from helpers import auth
 
 
 ANCHOR = """      typedPerKey = true;

@@ -1,0 +1,7 @@
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+exclude = ["vendor", "preview/dist", "node_modules", "data"]
+
+[tool.ruff.lint]
+select = ["E9", "F63", "F7", "F82"]

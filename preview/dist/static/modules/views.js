@@ -1,6 +1,8 @@
 import { S } from "./state.js";
 import { uiIcon } from "./dom.js";
 import { $, esc, trunc, compact, fmtSec, relativeMinutes } from "./dom.js";
+import { filterJobs } from "./jobs.js";
+export { filterJobs } from "./jobs.js";
 export function renderAll() {
   const active = S.accounts.filter((a) => !a.archived_at),
     archived = S.accounts.filter((a) => a.archived_at);
@@ -136,26 +138,6 @@ export { projectLabel };
 
 export function statusPill(v) {
   return `<span class="pill ${esc(v)}">${esc(v)}</span>`;
-}
-
-export function filterJobs(jobs, status = "all", query = "", accountNames = {}) {
-  const q = String(query || "").trim().toLowerCase();
-  return (jobs || []).filter((j) => {
-    if (status === "active" && !["queued", "running"].includes(j.status))
-      return false;
-    if (status === "completed" && j.status !== "completed") return false;
-    if (status === "problems") {
-      const isProblem = ["failed", "unknown", "rate_limited"].includes(j.status);
-      // A reconciled unknown job is closed; it should not keep asking for attention.
-      const closed = j.status === "unknown" && Boolean(j.resolution);
-      if (!isProblem || closed) return false;
-    }
-    if (!q) return true;
-    const haystack = [j.prompt, j.id, j.status, accountNames[j.account_id] || ""]
-      .join(" ")
-      .toLowerCase();
-    return haystack.includes(q);
-  });
 }
 
 const EFFORT_LABELS = {

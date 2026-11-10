@@ -11,7 +11,7 @@ from PIL import Image
 from sqlalchemy import select
 
 from test_app import loaded, auth
-from hub import media, gateway
+from hub import execution, gateway, media
 
 
 def png():
@@ -231,8 +231,6 @@ def test_redirect_is_not_followed(loaded, monkeypatch):
 
 
 def test_json_budget_failure_remains_unknown_without_replay(loaded, monkeypatch):
-    from hub import scheduler
-
     client, ctx = loaded
     h = auth(client)
     # Stop the background scheduler BEFORE queueing: this test executes the job by hand
@@ -254,7 +252,7 @@ def test_json_budget_failure_remains_unknown_without_replay(loaded, monkeypatch)
         calls.append(1)
         raise gateway.ResponseBudgetError("injected response budget")
 
-    monkeypatch.setattr(scheduler, "request_generation", reject)
+    monkeypatch.setattr(execution, "request_generation", reject)
     ctx.execute_job(
         jid, ctx.query_account(account["id"]), "Budget fixture", "1:1", "balanced", 1
     )
@@ -356,7 +354,7 @@ def test_gateway_server_failure_after_submission_is_unknown(loaded, monkeypatch)
     monkeypatch.setattr(ctx, "process_state", lambda a: "running")
     monkeypatch.setattr(ctx, "upstream_probe", lambda a: True)
     monkeypatch.setattr(
-        scheduler,
+        execution,
         "request_generation",
         lambda *args: SimpleNamespace(
             status_code=502, data={"error": "bad gateway"}, headers={}

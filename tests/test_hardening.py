@@ -17,21 +17,19 @@ from fastapi.testclient import TestClient
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from helpers import all_css, auth, build_hub
 
 
 def _build(monkeypatch, tmp_path, password="example-passphrase-123456789", db_url=None):
-    monkeypatch.setenv("ADMIN_PASSWORD", password)
-    monkeypatch.setenv("APP_SECRET", "a" * 64)
-    monkeypatch.setenv("AGENT_API_KEY", "test-agent-key-98765")
-    monkeypatch.setenv("DATA_DIR", str(tmp_path / "data"))
-    monkeypatch.setenv("DATABASE_URL", db_url or "sqlite:///" + str(tmp_path / "hub.db"))
-    sys.modules.pop("app", None)
-    module = importlib.import_module("app")
-    ctx = module.app.state.hub
-    ctx.app = module.app
+    module, ctx = build_hub(
+        monkeypatch,
+        tmp_path,
+        runtime_installed=False,
+        password=password,
+        db_url=db_url,
+    )
     # Hardening tests must never launch a real gateway/browser, even on a machine where
     # vendor/ is installed. Tests that exercise supervision opt in explicitly.
-    ctx.runtime_installed = lambda: False
     return module, ctx
 
 
@@ -42,13 +40,6 @@ def loaded(tmp_path, monkeypatch):
         yield client, ctx
     ctx.engine.dispose()
     sys.modules.pop("app", None)
-
-
-def auth(client, password="example-passphrase-123456789"):
-    res = client.post("/api/auth/login", json={"password": password})
-    assert res.status_code == 200, res.text
-    return {"x-csrf-token": res.json()["csrf"]}
-
 
 def test_static_javascript_is_served_with_javascript_mime(loaded):
     """v0.5 regression: on Windows .js resolved to text/plain, so the SPA never booted."""
@@ -539,7 +530,7 @@ def test_icons_are_bundled_locally_and_complete():
 def test_ui_bundle_contract():
     """Bundle A+B: skip link, favicon, labels, chart empty state, jobs toolbar, toasts."""
     html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
-    css = (ROOT / "frontend" / "style.css").read_text(encoding="utf-8")
+    css = all_css()
     views = (ROOT / "frontend" / "modules" / "views.js").read_text(encoding="utf-8")
 
     # Bundle A: accessibility, favicon, dialog validation, naming, chart empty state

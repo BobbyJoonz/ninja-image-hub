@@ -20,6 +20,7 @@ import os
 import sys
 import time
 import uuid
+from pathlib import Path
 
 try:
     import httpx
@@ -27,6 +28,9 @@ except ImportError:  # pragma: no cover
     sys.exit("httpx is required (pip install -r requirements.txt)")
 
 SETTLED = {"completed", "partial", "failed", "unknown", "rate_limited", "canceled"}
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _panel import Panel  # noqa: E402
 
 
 def percentile(values, q):
@@ -69,11 +73,13 @@ def main():
     if not args.password:
         sys.exit("Provide --password or NINJA_ADMIN_PASSWORD to read the panel.")
 
-    client = httpx.Client(base_url=args.panel.rstrip("/"), timeout=60)
-    login = client.post("/api/auth/login", json={"password": args.password})
-    if login.status_code != 200:
-        sys.exit(f"login failed: {login.status_code} {login.text[:120]}")
-    headers = {"x-csrf-token": login.json()["csrf"]}
+    panel = Panel(args.panel, args.password, timeout=60)
+    try:
+        panel.login()
+    except Exception as exc:  # noqa: BLE001 - one clear message for the operator
+        sys.exit(f"login failed: {exc}")
+    client = panel.client
+    headers = panel.headers
 
     accounts = [a for a in client.get("/api/accounts").json() if not a.get("archived_at")]
     accounts = accounts[: args.accounts or None]

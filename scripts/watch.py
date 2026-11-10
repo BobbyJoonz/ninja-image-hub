@@ -28,6 +28,9 @@ try:
 except ImportError:  # pragma: no cover
     sys.exit("httpx is required (pip install -r requirements.txt)")
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _panel import Panel  # noqa: E402
+
 
 def evaluate(health, queue=None, options=None):
     """Pure alert evaluation; returns a list of alert dicts."""
@@ -120,20 +123,6 @@ def fetch_health(base):
     return response.json()
 
 
-def login(base, password):
-    client = httpx.Client(base_url=base.rstrip("/"), timeout=15)
-    result = client.post("/api/auth/login", json={"password": password})
-    result.raise_for_status()
-    csrf = result.json()["csrf"]
-    return client, {"x-csrf-token": csrf}
-
-
-def fetch_queue(client, headers):
-    response = client.get("/api/queue", headers=headers)
-    response.raise_for_status()
-    return response.json()
-
-
 def send_webhook(url, text, alerts, health):
     payload = {"text": text, "alerts": alerts, "health": health}
     response = httpx.post(url, json=payload, timeout=15)
@@ -169,7 +158,7 @@ def main():
         "workers_down_min": 2,
         "effort_below_min": args.effort_below_min,
     }
-    client = headers = None
+    panel = None
     while True:
         health = None
         queue = None
@@ -177,12 +166,13 @@ def main():
             health = fetch_health(args.panel)
             unreachable_streak = 0
             if args.password:
-                if client is None:
-                    client, headers = login(args.panel, args.password)
-                queue = fetch_queue(client, headers)
+                if panel is None:
+                    panel = Panel(args.panel, args.password, timeout=15)
+                    panel.login()
+                queue = panel.queue()
         except Exception as exc:  # noqa: BLE001 - any failure is "unreachable"
             unreachable_streak += 1
-            client = None
+            panel = None
             if unreachable_streak >= 2:
                 health = None
             print(f"[watch] poll failed ({unreachable_streak}): {exc}", file=sys.stderr)

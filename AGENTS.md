@@ -133,6 +133,25 @@ The docs above are the current description. Older versioned documents were remov
 - Keep SQLite `journal_mode=WAL`, `busy_timeout=15000`, `synchronous=NORMAL` and a 15 s connect timeout.
 - Control mutations persist to `control_settings`, are validated server-side and audited without secrets. `.env` is not a live control plane.
 
+## Code layout
+
+- Gateway runtime patches live in `hub/gateway_patches.py` as an idempotent registry
+  (`PATCH_ORDER`, `PATCH_MARKERS`, `apply_worker_patches`); `hub/workers.py` must only call
+  the registry and keep the lifecycle. Doctor imports the same marker names, never a literal.
+- A job's single execution lives in `hub/execution.py`; the scheduler keeps dispatch,
+  health, wake/reap and supervision. Failure classification lives in `hub/gateway_errors.py`.
+- Shared test scaffolding lives in `tests/conftest.py` + `tests/helpers.py` (`build_hub`,
+  `auth`, `fake_gateway`, `start_mock_account`, `all_css`). Do not copy fixtures or fake
+  gateway servers into individual test modules.
+- The version comes from `hub/version.py` (which reads `package.json`); never add a second
+  version literal.
+- Operator scripts share `scripts/_panel.py` for login/CSRF/JSON. Never duplicate that
+  handshake in a new script.
+- Styles are `frontend/styles/base.css` + `features.css` (the UI links both); `style.css`
+  remains an aggregating `@import` entry point for compatibility. Tests read `all_css()`.
+- `.github/workflows/ci.yml` runs static checks (ruff real errors, compile, JS syntax, node
+  tests, icons, seal, offline test subset) and a best-effort full suite; keep it green.
+
 ## Frontend and preview
 
 - `frontend/` is native ES modules; the only entry point is `/static/app.js`. Keep `app.py` a thin ASGI entrypoint and compose routes explicitly in `hub/factory.py`.

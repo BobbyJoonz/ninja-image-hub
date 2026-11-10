@@ -15,32 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from fastapi.testclient import TestClient  # noqa: E402
-
-
-@pytest.fixture()
-def loaded(tmp_path, monkeypatch):
-    monkeypatch.setenv("ADMIN_PASSWORD", "example-passphrase-123456789")
-    monkeypatch.setenv("APP_SECRET", "a" * 64)
-    monkeypatch.setenv("AGENT_API_KEY", "test-agent-key-98765")
-    monkeypatch.setenv("DATA_DIR", str(tmp_path / "data"))
-    monkeypatch.setenv("DATABASE_URL", "sqlite:///" + str(tmp_path / "hub.db"))
-    sys.modules.pop("app", None)
-    module = importlib.import_module("app")
-    ctx = module.app.state.hub
-    ctx.app = module.app
-    # Hermetic: never treat a developer machine's vendor/ checkout as installed.
-    monkeypatch.setattr(ctx, "runtime_installed", lambda: False)
-    with TestClient(module.app) as client:
-        yield client, ctx
-    ctx.engine.dispose()
-    sys.modules.pop("app", None)
-
-
-def auth(client, password="example-passphrase-123456789"):
-    response = client.post("/api/auth/login", json={"password": password})
-    assert response.status_code == 200, response.text
-    return {"x-csrf-token": response.json()["csrf"]}
-
+from helpers import auth
 
 def _load_script(name):
     spec = importlib.util.spec_from_file_location(f"{name}_module", ROOT / "scripts" / f"{name}.py")
@@ -54,6 +29,11 @@ def _settings(**values):
 
 
 # ------------------------------------------------------------------ reconciliation
+@pytest.fixture()
+def loaded(loaded_offline):
+    return loaded_offline
+
+
 def test_unknown_job_can_be_reconciled_once(loaded):
     client, ctx = loaded
     h = auth(client)

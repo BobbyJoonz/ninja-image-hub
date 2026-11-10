@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import func, select
 
 from . import effort, uploads
+from .version import VERSION
 
 
 def _disk_free_mb(ctx):
@@ -118,7 +119,7 @@ def health(ctx):
     disk_low = _disk_low(ctx)
     return {
         "ok": True,
-        "version": "0.12.0",
+        "version": VERSION,
         "gateway_installed": ctx.runtime_installed(),
         "accounts": accounts_total,
         "running_workers": alive,

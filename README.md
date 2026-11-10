@@ -14,6 +14,7 @@
 [![Accounts](https://img.shields.io/badge/accounts-1%20to%2016-8957e5)](#multi-account-model)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-linux%20%7C%20windows-6e7681)](#quick-start)
+[![CI](https://github.com/BobbyJoonz/ninja-image-hub/actions/workflows/ci.yml/badge.svg)](https://github.com/BobbyJoonz/ninja-image-hub/actions/workflows/ci.yml)
 
 [Quick start](#quick-start) · [Multi-account](#multi-account-model) · [Every option](#complete-option-reference) · [Capacity](#capacity-and-sizing) · [API](#http-api-reference) · [Docs](#documentation)
 
@@ -193,15 +194,18 @@ flowchart LR
 | `app.py` | 5-line ASGI entrypoint; only `create_app()` builds the instance |
 | `hub/factory.py`, `hub/runtime.py` | Explicit composition, per-instance `ctx`, JS MIME pin, route table, thread pools |
 | `hub/jobs.py` | Queue insert, idempotency, validation, serialization |
-| `hub/scheduler.py` | Fair dispatch, health snapshot, wake/reap, crash supervisor |
+| `hub/scheduler.py` | Fair dispatch, health snapshot, wake/reap, crash supervisor (loop + policy only) |
+| `hub/execution.py`, `hub/gateway_errors.py` | One job execution and the honest failure classification, testable independently of the loop |
 | `hub/accounts.py`, `hub/workers.py` | Account lifecycle, port allocation, env allowlist, Xvfb, orphan reclaim |
+| `hub/gateway_patches.py` | Idempotent, fail-open runtime patches for the pinned gateway; one registry the doctor can verify |
+| `hub/gateway_patches.py` | Idempotent, fail-open runtime patches for the pinned gateway; one registry the doctor can verify |
 | `hub/gateway.py` | Upstream HTTP contract (bounded JSON envelope, no replay) |
 | `hub/media.py`, `hub/storage.py`, `hub/delivery.py` | Chunked budgets, atomic publish, previews, ZIP, Range |
 | `hub/security.py`, `hub/limits.py` | Session/CSRF/Bearer, UTF-8-safe comparisons, body caps |
 | `hub/control.py`, `hub/system.py`, `hub/telemetry.py` | Live settings + audit, health, analytics |
 | `frontend/` | Native ES modules: state · api · controller · views · accounts · dom · `icons/sprite.svg` |
 | `deploy/` | Linux installer + systemd unit |
-| `scripts/` | doctor, gateway installer, preview server, bootstrap, audit, benchmark |
+| `scripts/` | doctor, gateway installer, preview server, bootstrap, audit, benchmark, `resolve_unknown`, shared `_panel` client |
 
 ---
 

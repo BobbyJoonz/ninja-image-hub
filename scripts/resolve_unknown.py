@@ -15,14 +15,13 @@ releases that job's reference-image workspace.
 
 import argparse
 import json
-import os
 import sys
 import time
+from pathlib import Path
 
-try:
-    import httpx
-except ImportError:  # pragma: no cover
-    sys.exit("httpx is required (pip install -r requirements.txt)")
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from _panel import Panel, PanelError, password_from  # noqa: E402
 
 VALID = ("delivered_manually", "not_delivered", "abandoned")
 
@@ -70,19 +69,10 @@ def describe(job):
     }
 
 
-def login(client, password):
-    response = client.post("/api/auth/login", json={"password": password})
-    if response.status_code != 200:
-        sys.exit(f"login failed: {response.status_code} {response.text[:120]}")
-    return {"x-csrf-token": response.json()["csrf"]}
-
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--panel", default="http://127.0.0.1:8081")
-    parser.add_argument(
-        "--password", default=os.getenv("NINJA_ADMIN_PASSWORD", "")
-    )
+    parser.add_argument("--password", default=None)
     parser.add_argument(
         "--match",
         default="",
@@ -107,67 +97,64 @@ def main():
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
 
-    if not args.password:
-        sys.exit("Provide --password or NINJA_ADMIN_PASSWORD to read the panel.")
-
-    client = httpx.Client(base_url=args.panel.rstrip("/"), timeout=30)
-    headers = login(client, args.password)
-    jobs = client.get("/api/jobs?limit=200").json()
-    selected = filter_unknown(
-        jobs, match=args.match, older_than_hours=args.older_than_hours, ids=args.ids
-    )
-
-    if args.json:
-        print(
-            json.dumps(
-                {
-                    "selected": [describe(job) for job in selected],
-                    "apply": bool(args.resolution and args.yes),
-                    "resolution": args.resolution,
-                },
-                indent=2,
+    password = password_from(args)
+    try:
+        with Panel(args.panel, password) as panel:
+            panel.login()
+            jobs = panel.jobs(limit=200)
+            selected = filter_unknown(
+                jobs,
+                match=args.match,
+                older_than_hours=args.older_than_hours,
+                ids=args.ids,
             )
-        )
-    else:
-        print(f"unresolved unknown jobs: {len(selected)}")
-        for job in selected:
-            info = describe(job)
-            print(
-                f"  {str(info['id'])[:8]}  {info['created_at']}  refs={info['refs']}  "
-                f"{info['error']}"
-            )
-        if not selected:
-            print("Nothing to reconcile.")
-            return 0
-        if not args.resolution or not args.yes:
-            print(
-                "\ndry run. Re-run with --resolution "
-                f"{{{ '|'.join(VALID) }}} --yes to record a verdict."
-            )
-            return 0
 
-    if not args.resolution or not args.yes:
-        return 0
+            if args.json:
+                print(
+                    json.dumps(
+                        {
+                            "selected": [describe(job) for job in selected],
+                            "apply": bool(args.resolution and args.yes),
+                            "resolution": args.resolution,
+                        },
+                        indent=2,
+                    )
+                )
+            else:
+                print(f"unresolved unknown jobs: {len(selected)}")
+                for job in selected:
+                    info = describe(job)
+                    print(
+                        f"  {str(info['id'])[:8]}  {info['created_at']}  refs={info['refs']}  "
+                        f"{info['error']}"
+                    )
+                if not selected:
+                    print("Nothing to reconcile.")
+                    return 0
+                if not args.resolution or not args.yes:
+                    print(
+                        "\ndry run. Re-run with --resolution "
+                        f"{{{ '|'.join(VALID) }}} --yes to record a verdict."
+                    )
+                    return 0
 
-    done = 0
-    failed = 0
-    for job in selected:
-        payload = {"resolution": args.resolution}
-        if args.note:
-            payload["note"] = args.note[:500]
-        response = client.post(
-            f"/api/jobs/{job['id']}/resolve", json=payload, headers=headers
-        )
-        if response.status_code == 200:
-            done += 1
-            print(f"resolved {str(job['id'])[:8]} as {args.resolution}")
-        else:
-            failed += 1
-            print(
-                f"FAILED {str(job['id'])[:8]}: {response.status_code} {response.text[:120]}"
-            )
-    print(f"\nresolved {done}, failed {failed}. Nothing was re-submitted upstream.")
-    return 1 if failed else 0
+            if not args.resolution or not args.yes:
+                return 0
+
+            done = 0
+            failed = 0
+            for job in selected:
+                try:
+                    panel.resolve(job["id"], args.resolution, args.note)
+                    done += 1
+                    print(f"resolved {str(job['id'])[:8]} as {args.resolution}")
+                except PanelError as exc:
+                    failed += 1
+                    print(f"FAILED {str(job['id'])[:8]}: {exc}")
+            print(f"\nresolved {done}, failed {failed}. Nothing was re-submitted upstream.")
+            return 1 if failed else 0
+    except PanelError as exc:
+        sys.exit(str(exc))
 
 
 if __name__ == "__main__":

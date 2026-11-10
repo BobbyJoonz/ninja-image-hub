@@ -16,31 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from hub import uploads  # noqa: E402
-
-
-@pytest.fixture()
-def loaded(tmp_path, monkeypatch):
-    monkeypatch.setenv("ADMIN_PASSWORD", "example-passphrase-123456789")
-    monkeypatch.setenv("APP_SECRET", "a" * 64)
-    monkeypatch.setenv("AGENT_API_KEY", "test-agent-key-98765")
-    monkeypatch.setenv("DATA_DIR", str(tmp_path / "data"))
-    monkeypatch.setenv("DATABASE_URL", "sqlite:///" + str(tmp_path / "hub.db"))
-    sys.modules.pop("app", None)
-    module = importlib.import_module("app")
-    ctx = module.app.state.hub
-    ctx.app = module.app
-    monkeypatch.setattr(ctx, "runtime_installed", lambda: True)
-    with TestClient(module.app) as client:
-        yield client, ctx
-    ctx.engine.dispose()
-    sys.modules.pop("app", None)
-
-
-def auth(client, password="example-passphrase-123456789"):
-    response = client.post("/api/auth/login", json={"password": password})
-    assert response.status_code == 200, response.text
-    return {"x-csrf-token": response.json()["csrf"]}
-
+from helpers import all_css, auth, start_mock_account
 
 def png_bytes(size=(64, 48), color="green"):
     buffer = io.BytesIO()
@@ -233,59 +209,6 @@ def test_delete_unused_upload(loaded):
 
 
 # ------------------------------------------------------------------ end to end gateway multipart
-def _mock_gateway(tmp_path, fail=False):
-    vendor = tmp_path / "fake-gateway"
-    (vendor / "src").mkdir(parents=True)
-    (vendor / "node_modules").mkdir()
-    (vendor / "public").mkdir()
-    png = io.BytesIO()
-    Image.new("RGB", (9, 7), "green").save(png, format="PNG")
-    encoded = base64.b64encode(png.getvalue()).decode()
-    capture = vendor / "requests.jsonl"
-    node_js = r"""const http=require('http'), fs=require('fs');
-const PORT=process.env.PORT;
-const CAPTURE=__CAPTURE__;
-const FAIL=__FAIL__;
-const app=http.createServer((req,res)=>{
-  if(req.url.startsWith('/health')) { res.setHeader('Content-Type','application/json');res.end('{"status":"ok"}');return; }
-  if(req.url.startsWith('/metrics')) { res.setHeader('Content-Type','text/plain');res.end('gpt_web_gateway_session_valid 1\n');return; }
-  if(req.url.startsWith('/login/screenshot')) {res.setHeader('Content-Type','image/jpeg');res.end(Buffer.from('ffd8ffd9','hex'));return;}
-  if(req.url==='/login' && req.method==='GET') {res.setHeader('Content-Type','text/html');res.end('<html>fake login</html>');return;}
-  if(req.url.startsWith('/login/')) {res.setHeader('Content-Type','application/json');res.end('{"ok":true}');return;}
-  if(req.url.startsWith('/v1/images/generations')) {
-    if(req.headers.authorization !== 'Bearer '+process.env.API_KEY){res.writeHead(401);res.end();return;}
-    let body=[]; req.on('data',(c)=>body.push(c)); req.on('end',()=>{
-      fs.appendFileSync(CAPTURE, JSON.stringify({ content_type: req.headers['content-type']||'', body_b64: Buffer.concat(body).toString('base64') })+'\n');
-      if(FAIL){res.writeHead(500,{'Content-Type':'application/json'});res.end(JSON.stringify({error:{message:'boom'}}));return;}
-      res.setHeader('Content-Type','application/json');
-      res.end(JSON.stringify({data:[{b64_json:__ENCODED__}], applied:{thinking_mode:'extended',thinking_verified:true,requested_verified:true,thinking_fallback:null,thinking_mode_mixed:false}, requested:{thinking_mode:'extended'}}));
-    });
-    return;
-  }
-  res.writeHead(404);res.end('not found');
-});
-app.listen(PORT, (err) => { if(err) throw err; });
-""".replace("__ENCODED__", json.dumps(encoded)).replace("__CAPTURE__", json.dumps(str(capture))).replace("__FAIL__", "true" if fail else "false")
-    (vendor / "src" / "server.js").write_text(node_js)
-    return vendor, capture
-
-
-def _start_mock_account(client, h, ctx, monkeypatch, tmp_path, fail=False):
-    vendor, capture = _mock_gateway(tmp_path, fail=fail)
-    monkeypatch.setattr(ctx, "VENDOR", vendor)
-    monkeypatch.setenv("DISPLAY", ":test-mock-only")
-    acc = client.post("/api/accounts", json={"name": "Ref mock", "autostart": False}, headers=h).json()
-    assert client.post(f"/api/accounts/{acc['id']}/start", headers=h).status_code == 200
-    state = None
-    for _ in range(120):
-        state = client.get("/api/accounts").json()[0]
-        if state["runtime"] == "online":
-            break
-        time.sleep(0.08)
-    assert state["runtime"] == "online", state
-    return acc, capture
-
-
 def _wait_job(client, job_id, timeout=20):
     deadline = time.time() + timeout
     while time.time() < deadline:
@@ -299,7 +222,7 @@ def _wait_job(client, job_id, timeout=20):
 def test_reference_images_reach_the_gateway_as_multipart(loaded, tmp_path, monkeypatch):
     client, ctx = loaded
     h = auth(client)
-    acc, capture = _start_mock_account(client, h, ctx, monkeypatch, tmp_path)
+    acc, capture = start_mock_account(client, h, ctx, monkeypatch, tmp_path)
     upload_id = upload(
         client, h, [("ref-one.png", png_bytes()), ("ref-two.jpg", jpeg_bytes())]
     ).json()["upload_id"]
@@ -338,7 +261,7 @@ def test_reference_images_reach_the_gateway_as_multipart(loaded, tmp_path, monke
 def test_unknown_outcome_keeps_references_for_reconciliation(loaded, tmp_path, monkeypatch):
     client, ctx = loaded
     h = auth(client)
-    acc, _capture = _start_mock_account(client, h, ctx, monkeypatch, tmp_path, fail=True)
+    acc, _capture = start_mock_account(client, h, ctx, monkeypatch, tmp_path, fail=True)
     upload_id = upload(client, h, [("ref.png", png_bytes())]).json()["upload_id"]
     response = client.post(
         "/api/generate",
@@ -424,7 +347,10 @@ def test_upload_sweep_is_age_and_usage_aware(loaded, tmp_path, monkeypatch):
 # ------------------------------------------------------------------ UI contract
 def test_upload_ui_contract():
     html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
-    app = (ROOT / "frontend" / "app.js").read_text(encoding="utf-8")
+    app = "\n".join(
+        (ROOT / "frontend" / name).read_text(encoding="utf-8")
+        for name in ("app.js", "modules/studio.js")
+    )
     api = (ROOT / "frontend" / "modules" / "api.js").read_text(encoding="utf-8")
     views = (ROOT / "frontend" / "modules" / "views.js").read_text(encoding="utf-8")
     assert 'id="genFiles"' in html and 'multiple' in html
@@ -432,7 +358,7 @@ def test_upload_ui_contract():
     assert "fileChips" in html and "fileLimits" in html
     assert "apiUpload" in api and "apiUpload" in app
     assert "reference_count" in views
-    css = (ROOT / "frontend" / "style.css").read_text(encoding="utf-8")
+    css = all_css()
     assert ".file-drop" in css and ".file-chip" in css
 
 # ------------------------------------------------------------------ deep-review additions
@@ -524,7 +450,7 @@ def test_canceling_queued_job_releases_its_upload(loaded):
 def test_deleting_unknown_job_releases_its_upload(loaded, tmp_path, monkeypatch):
     client, ctx = loaded
     h = auth(client)
-    acc, _capture = _start_mock_account(client, h, ctx, monkeypatch, tmp_path, fail=True)
+    acc, _capture = start_mock_account(client, h, ctx, monkeypatch, tmp_path, fail=True)
     upload_id = upload(client, h, [("ref.png", _noise_png((64, 64)))]).json()["upload_id"]
     job = client.post(
         "/api/generate",
@@ -596,7 +522,7 @@ def test_duplicate_names_get_distinct_safe_names(loaded):
 def test_agent_upload_then_generate(loaded, tmp_path, monkeypatch):
     client, ctx = loaded
     h = auth(client)
-    acc, capture = _start_mock_account(client, h, ctx, monkeypatch, tmp_path)
+    acc, capture = start_mock_account(client, h, ctx, monkeypatch, tmp_path)
     bearer = {"Authorization": "Bearer test-agent-key-98765"}
     uploaded = upload(
         client,
@@ -647,7 +573,10 @@ def test_sweep_cleans_half_written_workspaces(loaded):
     assert not incoming.exists()
 
 def test_reference_thumbnails_are_bounded_in_the_browser():
-    app = (ROOT / "frontend" / "app.js").read_text(encoding="utf-8")
+    app = "\n".join(
+        (ROOT / "frontend" / name).read_text(encoding="utf-8")
+        for name in ("app.js", "modules/studio.js")
+    )
     html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
     assert "createImageBitmap" in app
     assert "prepareReference" in app

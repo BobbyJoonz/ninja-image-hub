@@ -231,3 +231,51 @@ pre-submit و ثبت `failed` به‌جای `unknown` (تا اپراتور بت�
 
 **هنوز نامعلوم‌های قبلی:** ۱۵ Job از دور قبل (قبل از این طبقه‌بندی) با پیام عمومی قدیمی
 باقی مانده‌اند؛ ابزار لیست/آشتی آماده است ولی اجرای آن نیاز به تأیید اپراتور دارد.
+
+
+## v0.13.0 — بازآرایی ماژول‌ها، CI و جداسازی پچ‌ها (P1–P5)
+
+| مورد | قبل | بعد |
+|---|---|---|
+| `hub/workers.py` | ۱۴۶۳ خط | **۷۸۴ خط** (پچ‌ها منتقل شدند؛ lifecycle ماند) |
+| `hub/scheduler.py` | ۷۳۹ خط | **۴۱۶ خط** (execution و errorها جدا) |
+| فایل جدید | — | `execution.py` ۲۸۳ · `gateway_errors.py` ۸۲ · `gateway_patches.py` ۷۲۷ (شامل رشته‌های JS) |
+| fixture تکراری تست | ۸ نسخه | **۱** در `conftest.py` + `helpers.py` |
+| mock gateway | ۳ نسخه | **۱** (`helpers.fake_gateway`) |
+| login در اسکریپت‌ها | ۳ نسخه | **۱** (`scripts/_panel.py`) |
+| نسخه | ۳ literal | **۱** (`hub/version.py` از `package.json`) |
+| `frontend/app.js` | ۵۶۷ خط | **۳۳۳** + `modules/studio.js` ۲۴۰ |
+| `style.css` | ۲۹۱۰ خط تک‌فایل | `styles/base.css` ۲۰۴۱ + `styles/features.css` ۸۶۹؛ entry سازگاری با `@import` |
+| رندر | همهٔ viewها هر ۷.۵s | فقط view فعال + fingerprint برای accounts/jobs/settings/analytics/operations |
+| CI | نداشت | `.github/workflows/ci.yml` (static + full best-effort) |
+
+**اعتبارسنجی:** ۱۵۷ passed، ۱ skipped · node ۶/۶ · browser smoke همهٔ ۸ view بدون exception ·
+doctor PASS برای ۲ workspace و render cap · preview byte-identical · seal از clone.
+
+**باقی‌ماندهٔ صادقانه:** `workers.py` هنوز lifecycle را دارد (۷۸۴ خط)؛ `gateway_patches.py`
+بزرگ است چون رشته‌های JS در آن‌اند؛ `app.js` هنوز bootstrap/گالری/کنترل‌ها را دارد؛
+CI روی GitHub runner هنوز اجرا نشده (فقط YAML و دستورها محلی اعتبارسنجی شده‌اند).
+
+
+## v0.13.0 — بازآرایی ماژول‌ها، CI و جداسازی پچ‌ها (P1–P5)
+
+| مورد | قبل | بعد |
+|---|---|---|
+| `hub/workers.py` | ۱۴۶۳ خط | **۷۸۴ خط** (پچ‌ها منتقل شدند؛ lifecycle ماند) |
+| `hub/scheduler.py` | ۷۳۹ خط | **۴۱۶ خط** (execution و errorها جدا) |
+| فایل جدید | — | `execution.py` ۲۸۳ · `gateway_errors.py` ۸۲ · `gateway_patches.py` ۷۲۷ (شامل رشته‌های JS) |
+| fixture تکراری تست | ۸ نسخه | **۱** در `conftest.py` + `helpers.py` |
+| mock gateway | ۳ نسخه | **۱** (`helpers.fake_gateway`) |
+| login در اسکریپت‌ها | ۳ نسخه | **۱** (`scripts/_panel.py`) |
+| نسخه | ۳ literal | **۱** (`hub/version.py` از `package.json`) |
+| `frontend/app.js` | ۵۶۷ خط | **۳۳۳** + `modules/studio.js` ۲۴۰ |
+| `style.css` | ۲۹۱۰ خط تک‌فایل | `styles/base.css` ۲۰۴۱ + `styles/features.css` ۸۶۹؛ entry سازگاری با `@import` |
+| رندر | همهٔ viewها هر ۷.۵s | فقط view فعال + fingerprint برای accounts/jobs/settings/analytics/operations |
+| CI | نداشت | `.github/workflows/ci.yml` (static + full best-effort) |
+
+**اعتبارسنجی:** ۱۵۷ passed، ۱ skipped · node ۶/۶ · browser smoke همهٔ ۸ view بدون exception ·
+doctor PASS برای ۲ workspace و render cap · preview byte-identical · seal از clone.
+
+**باقی‌ماندهٔ صادقانه:** `workers.py` هنوز lifecycle را دارد (۷۸۴ خط)؛ `gateway_patches.py`
+بزرگ است چون رشته‌های JS در آن‌اند؛ `app.js` هنوز bootstrap/گالری/کنترل‌ها را دارد؛
+CI روی GitHub runner هنوز اجرا نشده (فقط YAML و دستورها محلی اعتبارسنجی شده‌اند).

@@ -8,6 +8,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 from .runtime import create_runtime
+from .version import VERSION
 from .limits import RequestBodyLimit
 from . import (
     control,
@@ -197,7 +198,7 @@ def create_app():
 
     app = FastAPI(
         title="Ninja Image Hub",
-        version="0.12.0",
+        version=VERSION,
         docs_url=None,
         redoc_url=None,
         lifespan=lifespan,

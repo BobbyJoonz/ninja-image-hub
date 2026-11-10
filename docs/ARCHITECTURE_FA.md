@@ -11,8 +11,11 @@
 | database / schemas | طرح SQL، مهاجرت افزایشی، مدل‌های درخواست |
 | security / limits | نشست ادمین، CSRF، Bearer، بودجهٔ بدنهٔ درخواست |
 | accounts / workers / login | چرخهٔ حساب، نشست و فرایند مستقل، رابط ورود |
+| gateway_patches | رجیستری پچ‌های idempotent/fail-open گیت‌وی + markerها برای doctor |
+| gateway_patches | رجیستری پچ‌های idempotent/fail-open گیت‌وی + markerها برای doctor |
 | jobs | ثبت پایدار، idempotency، تاریخچه و حذف/لغو |
-| scheduler / gateway | انصاف بین حساب‌ها، محدودیت ظرفیت، حمل پاسخ موتور |
+| scheduler / execution / gateway_errors | انصاف و سوپروایزر، اجرای یک Job، طبقه‌بندی خطا |
+| frontend modules | state Â· api Â· controller Â· views Â· accounts Â· studio Â· jobs Â· styles |
 | media / storage / delivery | دریافت مرحله‌ای، اعتبارسنجی، ثبت فایل، گالری، پیش‌نمایش، ZIP |
 | control / telemetry / system | تنظیمات زنده، تاریخچه، شاخص‌ها و وضعیت محیط |
 

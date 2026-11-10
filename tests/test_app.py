@@ -10,25 +10,18 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from fastapi.testclient import TestClient
 from PIL import Image
+from helpers import auth, build_hub, fake_gateway
 
 
 @pytest.fixture()
 def loaded(tmp_path, monkeypatch):
-    monkeypatch.setenv("ADMIN_PASSWORD", "example-passphrase-123456789")
-    monkeypatch.setenv("APP_SECRET", "a" * 64)
-    monkeypatch.setenv("AGENT_API_KEY", "test-agent-key-98765")
-    monkeypatch.setenv("DATA_DIR", str(tmp_path / "data"))
-    monkeypatch.setenv("DATABASE_URL", "sqlite:///" + str(tmp_path / "hub.db"))
-    import sys
-
-    sys.modules.pop("app", None)
-    module = importlib.import_module("app")
-    mod = module.app.state.hub
-    mod.app = module.app
-    # Hermetic: never treat a real vendor/ checkout on the developer machine as installed.
-    # A "runtime not installed" account must behave the same on every host. Tests that need
-    # a gateway point VENDOR at their own fake vendor directory.
-    monkeypatch.setattr(mod, "VENDOR", tmp_path / "vendor-not-installed")
+    module, mod = build_hub(
+        monkeypatch,
+        tmp_path,
+        runtime_installed=None,
+        vendor=tmp_path / "vendor-not-installed",
+    )
+    # Legacy attributes some tests use directly.
     from sqlalchemy import select, update
 
     mod.select = select
@@ -40,15 +33,6 @@ def loaded(tmp_path, monkeypatch):
         yield client, mod
     mod.engine.dispose()
     sys.modules.pop("app", None)
-
-
-def auth(client):
-    res = client.post(
-        "/api/auth/login", json={"password": "example-passphrase-123456789"}
-    )
-    assert res.status_code == 200, res.text
-    return {"x-csrf-token": res.json()["csrf"]}
-
 
 def test_login_required_and_csrf(loaded):
     client, mod = loaded
@@ -216,30 +200,9 @@ def test_full_generation_path_with_isolated_mock_gateway(loaded, tmp_path, monke
     """Full HTTP workflow using a fake Node upstream, NOT a real ChatGPT account."""
     client, m = loaded
     h = auth(client)
-    vendor = tmp_path / "fake-gateway"
-    (vendor / "src").mkdir(parents=True)
-    (vendor / "node_modules").mkdir()
-    (vendor / "public").mkdir()
     png = io.BytesIO()
     Image.new("RGB", (9, 7), "green").save(png, format="PNG")
-    encoded = base64.b64encode(png.getvalue()).decode()
-    node_js = r"""const http=require('http');
-const PORT=process.env.PORT;
-const app=http.createServer((req,res)=>{
-  if(req.url.startsWith('/health')) { res.setHeader('Content-Type','application/json');res.end('{"status":"ok"}');return; }
-  if(req.url.startsWith('/metrics')) { res.setHeader('Content-Type','text/plain');res.end('gpt_web_gateway_session_valid 1\n');return; }
-  if(req.url.startsWith('/login/screenshot')) {res.setHeader('Content-Type','image/jpeg');res.end(Buffer.from('ffd8ffd9','hex'));return;}
-  if(req.url==='/login' && req.method==='GET') {res.setHeader('Content-Type','text/html');res.end('<html>fake login</html>');return;}
-  if(req.url.startsWith('/login/')) {res.setHeader('Content-Type','application/json');res.end('{"ok":true}');return;}
-  if(req.url.startsWith('/v1/images/generations')) {
-    if(req.headers.authorization !== 'Bearer '+process.env.API_KEY){res.writeHead(401);res.end();return;}
-    res.setHeader('Content-Type','application/json');res.end(JSON.stringify({data:[{b64_json:'__ENCODED__'}]}));return;
-  }
-  res.writeHead(404);res.end('not found');
-});
-app.listen(PORT, (err) => { if(err) throw err; });
-""".replace("__ENCODED__", encoded)
-    (vendor / "src" / "server.js").write_text(node_js)
+    vendor, _capture = fake_gateway(tmp_path, image_bytes=png.getvalue())
     monkeypatch.setattr(m, "VENDOR", vendor)
     monkeypatch.setenv("DISPLAY", ":test-mock-only")
     # xvfb-run works with the mock as well; this test intentionally uses real child process launch.
