@@ -279,3 +279,10 @@ doctor PASS برای ۲ workspace و render cap · preview byte-identical · sea
 **باقی‌ماندهٔ صادقانه:** `workers.py` هنوز lifecycle را دارد (۷۸۴ خط)؛ `gateway_patches.py`
 بزرگ است چون رشته‌های JS در آن‌اند؛ `app.js` هنوز bootstrap/گالری/کنترل‌ها را دارد؛
 CI روی GitHub runner هنوز اجرا نشده (فقط YAML و دستورها محلی اعتبارسنجی شده‌اند).
+
+## v0.13.1 — رفع دو ایراد CI
+
+- scripts/doctor.py در مسیر Linux از subprocess استفاده می‌کرد اما import نداشت؛ CI (اولین اجرای واقعی روی Ubuntu) آن را گرفت. import اضافه شد.
+- jobهای CI خود pytest را نصب نمی‌کردند (requirements فقط runtime است)؛ اکنون هر دو job pytest را نصب می‌کنند.
+- 
+uff check محلی: All checks passed.
