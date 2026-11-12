@@ -1,5 +1,7 @@
 """Unit tests for the post-generation quality gate."""
 
+from pathlib import Path
+
 import pytest
 
 from hub import quality_gate as quality
@@ -227,6 +229,8 @@ def test_quality_gate_v2_project_url_patch(tmp_path):
 
     from hub import gateway_patches as patches
 
+    if not (Path("vendor/gpt-web-gateway/src/chatgpt.js")).is_file():
+        pytest.skip("vendored gateway checkout is not installed (optional runtime)")
     worker = tmp_path / "gateway"
     (worker / "src" / "routes").mkdir(parents=True)
     shutil.copy("vendor/gpt-web-gateway/src/chatgpt.js", worker / "src" / "chatgpt.js")
