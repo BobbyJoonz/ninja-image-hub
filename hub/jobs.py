@@ -193,6 +193,10 @@ def serialize_job(ctx, row, agent=False, image_rows=None):
             "thinking_verified",
             "thinking_fallback",
             "thinking_mixed",
+            "conversation_id",
+            "quality_score",
+            "quality_verdict",
+            "quality_meta",
             "reference_upload_id",
             "reference_count",
         ]

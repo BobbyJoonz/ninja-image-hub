@@ -20,6 +20,7 @@ PATCH_ORDER = (
     "_patch_launch_args",
     "_patch_image_failure_detect",
     "_patch_fast_prompt_insert",
+    "_patch_quality_gate",
 )
 
 PATCH_MARKERS = {
@@ -32,6 +33,7 @@ PATCH_MARKERS = {
     "live_view": "ninja:live-view",
     "launch_args": "ninja:launch-args",
     "image_failure": "ninja:image-failure-detect",
+    "quality_gate": "ninja:quality-gate",
 }
 
 
@@ -409,6 +411,81 @@ def _patch_image_failure_detect(worker):
     )
     chatgpt.write_text(content, encoding="utf-8")
     images.write_text(images_content, encoding="utf-8")
+    return True
+
+
+QUALITY_GATE_MARKER = "ninja:quality-gate"
+
+
+def _patch_quality_gate(worker):
+    """Let image turns continue an existing conversation and report its real id."""
+    chatgpt_path = pathlib.Path(worker) / "src" / "chatgpt.js"
+    route_path = pathlib.Path(worker) / "src" / "routes" / "images.js"
+    if not chatgpt_path.is_file() or not route_path.is_file():
+        return False
+    content = chatgpt_path.read_text(encoding="utf-8")
+    route = route_path.read_text(encoding="utf-8")
+    if QUALITY_GATE_MARKER in content and QUALITY_GATE_MARKER in route:
+        return False
+
+    anchor = (
+        "  let p = await ensureLoggedIn(slot);\n"
+        "\n"
+        "  if (!options.reuseChat) await ensureNewChat(p);\n"
+        "  else await composerPreflight(p);"
+    )
+    if content.count(anchor) != 2:
+        return False
+    replacement = (
+        "  let p = await ensureLoggedIn(slot);\n"
+        "\n"
+        "  // ninja:quality-gate — continue an existing conversation when asked.\n"
+        "  if (options.conversationId) {\n"
+        "    await openConversation(p, options.conversationId);\n"
+        "    options.reuseChat = true;\n"
+        "  }\n"
+        "\n"
+        "  if (!options.reuseChat) await ensureNewChat(p);\n"
+        "  else await composerPreflight(p);"
+    )
+    content = content.replace(anchor, replacement)
+
+    return_anchor = "  return {\n    ...result,\n    applied: {"
+    if content.count(return_anchor) not in (1, 2):
+        return False
+    content = content.replace(
+        return_anchor,
+        "  return {\n    ...result,\n    // ninja:quality-gate — the chat this turn actually used.\n"
+        "    conversationId: result.conversationId || conversationIdFromUrl(p.url()),\n"
+        "    applied: {",
+    )
+    chatgpt_path.write_text(content, encoding="utf-8")
+
+    route_anchor = "    let firstApplied = null;"
+    if route.count(route_anchor) != 1:
+        return False
+    route = route.replace(
+        route_anchor,
+        "    let firstApplied = null;\n    let firstConversationId = conversationId;",
+        1,
+    )
+    route = route.replace(
+        "            reuseChat: i > 0,",
+        "            reuseChat: i > 0,\n            conversationId: i === 0 ? conversationId : undefined,",
+        1,
+    )
+    route = route.replace(
+        "          if (i === 0 && result.applied) firstApplied = result.applied;",
+        "          if (i === 0 && result.applied) firstApplied = result.applied;\n"
+        "          if (i === 0 && result.conversationId) firstConversationId = result.conversationId;",
+        1,
+    )
+    route = route.replace(
+        "        conversation_id: conversationId,",
+        "        conversation_id: firstConversationId || conversationId,",
+        1,
+    )
+    route_path.write_text(route, encoding="utf-8")
     return True
 
 

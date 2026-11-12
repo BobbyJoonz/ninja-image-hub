@@ -86,6 +86,8 @@ class ControlUpdate(BaseModel):
     upload_max_total_mb: int | None = Field(default=None, ge=1, le=200)
     upload_retention_hours: int | None = Field(default=None, ge=0, le=720)
     render_wait_sec: int | None = Field(default=None, ge=3, le=60)
+    quality_gate: int | None = Field(default=None, ge=0, le=2)
+    quality_threshold: int | None = Field(default=None, ge=1, le=10)
     thinking_effort: Literal[
         "high", "extra_high", "medium", "instant", "pro"
     ] | None = None

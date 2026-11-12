@@ -13,7 +13,10 @@ import httpx
 from sqlalchemy import select, update
 
 from . import effort as effort_tier
-from .gateway import request_generation, ResponseBudgetError
+import json
+
+from . import quality_gate as quality
+from .gateway import request_chat, request_generation, ResponseBudgetError
 from .gateway_errors import gateway_failure_text, parse_gateway_failure
 
 
@@ -190,6 +193,19 @@ def execute_job(ctx, job_id, acc, prompt, aspect, quality_preference, n=1):
                     )
                 )
             return
+        quality_meta = None
+        quality_score = None
+        quality_verdict = None
+        conversation_id = (response_body.get("applied") or {}).get("conversation_id")
+        if int(ctx.setting("quality_gate") or 0) > 0 and conversation_id:
+            response_body, quality_meta = _apply_quality_gate(
+                ctx, acc, prompt, conversation_id, response_body, payload, url,
+                thinking_mode, n,
+            )
+            if quality_meta:
+                quality_score = quality_meta.get("score")
+                quality_verdict = quality_meta.get("verdict")
+                conversation_id = quality_meta.get("conversation_id") or conversation_id
         stored, save_error = ctx.record_image_batch(
             response_body, job_id, acc["port"], n
         )
@@ -232,6 +248,14 @@ def execute_job(ctx, job_id, acc, prompt, aspect, quality_preference, n=1):
                     ),
                     thinking_fallback=effort_summary["fallback"] or None,
                     thinking_mixed=1 if effort_summary["mixed"] else 0,
+                    conversation_id=conversation_id,
+                    quality_score=quality_score,
+                    quality_verdict=quality_verdict,
+                    quality_meta=(
+                        json.dumps(quality_meta, ensure_ascii=False)[:3900]
+                        if quality_meta
+                        else None
+                    ),
                 )
             )
     except ctx.ProviderLimit as e:
@@ -281,3 +305,81 @@ def execute_job(ctx, job_id, acc, prompt, aspect, quality_preference, n=1):
         # A finished job counts as recent activity: do not reap the browser in the same
         # minute the account just produced an image.
         ctx.touch_account(acc["id"])
+
+def _apply_quality_gate(ctx, acc, prompt, conversation_id, body, payload, url,
+                        thinking_mode, n):
+    """Review a generated image in its own chat; optionally regenerate once.
+
+    The gate never fails a job: any review/regeneration problem keeps the first image.
+    """
+    mode = int(ctx.setting("quality_gate") or 0)
+    threshold = int(ctx.setting("quality_threshold") or 8)
+    meta = {"mode": mode, "threshold": threshold, "conversation_id": conversation_id}
+    try:
+        url_chat = ctx.upstream(acc) + "/v1/chat/completions"
+        review = quality.parse_review(
+            _review_chat(url_chat, acc, conversation_id, quality.build_review_prompt(prompt))
+        )
+        meta["review"] = review
+        meta["score"] = review.get("overall")
+        meta["verdict"] = review.get("verdict")
+        if mode < 2 or not quality.needs_refinement(review, threshold):
+            return body, meta
+        correction = quality.build_correction_prompt(prompt, review.get("issues"))
+        refined_payload = dict(payload)
+        refined_payload["prompt"] = correction
+        refined_payload["conversation_id"] = conversation_id
+        meta["original_urls"] = [
+            item.get("url") for item in (body.get("data") or []) if item.get("url")
+        ]
+        try:
+            refined = request_generation(url, acc["api_secret"], refined_payload, n)
+        except Exception as exc:  # noqa: BLE001 - keep the first image
+            meta["error"] = "refinement call failed: " + str(exc)[:160]
+            return body, meta
+        if refined.status_code != 200 or not isinstance(refined.data, dict):
+            meta["error"] = f"refinement HTTP {refined.status_code}"
+            return body, meta
+        try:
+            review2 = quality.parse_review(
+                _review_chat(
+                    url_chat, acc, conversation_id,
+                    quality.build_review_prompt(prompt),
+                )
+            )
+        except Exception:  # noqa: BLE001
+            review2 = None
+        meta["refined_review"] = review2
+        meta["attempts"] = 1
+        if review2 and quality.improved(review, review2):
+            meta["refined"] = True
+            meta["score"] = review2.get("overall")
+            meta["verdict"] = review2.get("verdict")
+            meta["refined_urls"] = [
+                item.get("url") for item in (refined.data.get("data") or []) if item.get("url")
+            ]
+            return refined.data, meta
+        meta["refined"] = False
+        return body, meta
+    except Exception as exc:  # noqa: BLE001 - the gate is advisory, never fatal
+        meta["error"] = str(exc)[:200]
+        return body, meta
+
+
+def _review_chat(url_chat, acc, conversation_id, prompt):
+    """Ask the model to audit the image it just produced (same conversation)."""
+    response = request_chat(
+        url_chat,
+        acc["api_secret"],
+        {"conversation_id": conversation_id, "prompt": prompt},
+        timeout=180.0,
+    )
+    if response.status_code != 200 or not isinstance(response.data, dict):
+        raise RuntimeError(f"review HTTP {response.status_code}")
+    choices = response.data.get("choices") or []
+    content = ""
+    if choices and isinstance(choices[0], dict):
+        content = ((choices[0].get("message") or {}).get("content") or "")
+    if not content:
+        raise RuntimeError("review returned no text")
+    return content

@@ -133,6 +133,9 @@ def initialize_controls(ctx):
         "upload_retention_hours": (24, 0, 720, "UPLOAD_RETENTION_HOURS"),
         # Upper bound for the adaptive image-render wait (upstream default was a fixed 15 s).
         "render_wait_sec": (8, 3, 60, "RENDER_WAIT_SEC"),
+        # Post-generation quality gate: 0=off, 1=review only, 2=review + one same-chat regeneration.
+        "quality_gate": (0, 0, 2, "QUALITY_GATE"),
+        "quality_threshold": (8, 1, 10, "QUALITY_THRESHOLD"),
     }
 
     ctx.ENUM_CONTROLS = {

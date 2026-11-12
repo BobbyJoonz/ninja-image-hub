@@ -53,3 +53,18 @@ def request_generation(url, secret, payload, n, files=None):
                 except (ValueError, UnicodeError):
                     data = None
     return SimpleNamespace(status_code=status, headers=headers, data=data)
+
+
+def request_chat(url, secret, payload, timeout=180.0):
+    """POST a text/review turn to the gateway (same conversation when conversation_id is set)."""
+    with httpx.Client(trust_env=False, timeout=httpx.Timeout(read=timeout, connect=10)) as client:
+        response = client.post(
+            url, headers={"Authorization": "Bearer " + secret}, json=payload
+        )
+        try:
+            data = response.json()
+        except ValueError:
+            data = None
+    return SimpleNamespace(
+        status_code=response.status_code, headers=dict(response.headers), data=data
+    )
