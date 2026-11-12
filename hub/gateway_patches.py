@@ -21,6 +21,7 @@ PATCH_ORDER = (
     "_patch_image_failure_detect",
     "_patch_fast_prompt_insert",
     "_patch_quality_gate",
+    "_patch_quality_gate_v2",
 )
 
 PATCH_MARKERS = {
@@ -487,6 +488,148 @@ def _patch_quality_gate(worker):
     )
     route_path.write_text(route, encoding="utf-8")
     return True
+
+
+QUALITY_GATE_V2_MARKER = "ninja:quality-gate-v2"
+
+QUALITY_GATE_HELPERS = "// ninja:quality-gate-v2 — project-aware conversation URLs.\n// Project chats live at /g/<project>/c/<uuid>; opening /c/<uuid> returns 404.\nfunction normalizeConversationUrl(raw) {\n  try {\n    const url = new URL(String(raw || ''));\n    if (url.hostname !== 'chatgpt.com') return null;\n    if (!/^(\\/g\\/[^/]+)?\\/c\\/[0-9a-f-]{36}$/i.test(url.pathname)) return null;\n    return url.origin + url.pathname;\n  } catch (err) {\n    return null;\n  }\n}\n\nfunction conversationUrlFromPage(raw) {\n  return normalizeConversationUrl(raw);\n}\n\nasync function openConversationUrl(page, raw) {\n  const target = normalizeConversationUrl(raw);\n  if (!target) {\n    const err = new Error('Invalid conversation_url');\n    err.status = 400;\n    err.code = 'invalid_request';\n    throw err;\n  }\n  const response = await page.goto(target, { waitUntil: 'domcontentloaded', timeout: 45000 });\n  if (!response || response.status() >= 400) {\n    const err = new Error('Conversation did not load (project-aware URL)');\n    err.status = 404;\n    err.code = 'conversation_not_found';\n    throw err;\n  }\n  return target;\n}\n\n"
+
+
+
+
+def _patch_quality_gate_v2(worker):
+    """Upgrade the v1 quality-gate patch to project-aware conversation URLs.
+
+    v1 recorded only the UUID and reopened /c/<uuid>, which 404s for chats that live
+    inside a ChatGPT project (/g/<project>/c/<uuid>). v2 carries the full page URL
+    from generation through review and refinement. Every fragment is guarded, so this
+    also upgrades already-patched worker copies.
+    """
+    chatgpt_path = pathlib.Path(worker) / "src" / "chatgpt.js"
+    route_path = pathlib.Path(worker) / "src" / "routes" / "images.js"
+    if not chatgpt_path.is_file() or not route_path.is_file():
+        return False
+    content = chatgpt_path.read_text(encoding="utf-8")
+    route = route_path.read_text(encoding="utf-8")
+    changed = False
+
+    helper_anchor = "async function completeText(prompt, options = {}) {"
+    if QUALITY_GATE_HELPERS not in content and content.count(helper_anchor) == 1:
+        content = content.replace(helper_anchor, QUALITY_GATE_HELPERS + helper_anchor, 1)
+        changed = True
+
+    v1_block = (
+        "  // ninja:quality-gate — continue an existing conversation when asked.\n"
+        "  if (options.conversationId) {\n"
+        "    await openConversation(p, options.conversationId);\n"
+        "    options.reuseChat = true;\n"
+        "  }\n"
+    )
+    v2_block = (
+        "  // ninja:quality-gate-v2 — continue an existing conversation when asked (project-aware).\n"
+        "  if (options.conversationUrl) {\n"
+        "    await openConversationUrl(p, options.conversationUrl);\n"
+        "    options.reuseChat = true;\n"
+        "  } else if (options.conversationId) {\n"
+        "    await openConversation(p, options.conversationId);\n"
+        "    options.reuseChat = true;\n"
+        "  }\n"
+    )
+    if v1_block in content:
+        content = content.replace(v1_block, v2_block)
+        changed = True
+
+    return_line = (
+        "    conversationId: result.conversationId || conversationIdFromUrl(p.url()),"
+    )
+    if return_line in content and "conversationUrl: result.conversationUrl" not in content:
+        content = content.replace(
+            return_line,
+            return_line
+            + "\n    conversationUrl: result.conversationUrl || conversationUrlFromPage(p.url()),",
+        )
+        changed = True
+
+    text_open = "      if (options.conversationId) await openConversation(p, options.conversationId);"
+    if text_open in content and "openConversationUrl(p, options.conversationUrl)" not in content:
+        content = content.replace(
+            text_open,
+            "      if (options.conversationUrl) await openConversationUrl(p, options.conversationUrl);\n"
+            "      else if (options.conversationId) await openConversation(p, options.conversationId);",
+            1,
+        )
+        changed = True
+
+    chat_conv = "  const conversationId = req.body.conversation_id ?? null;"
+    if chat_conv in route and "req.body.conversation_url" not in route:
+        route = route.replace(
+            chat_conv,
+            chat_conv
+            + "\n  const conversationUrl = typeof req.body.conversation_url === 'string' ? req.body.conversation_url : null;",
+            1,
+        )
+        changed = True
+    if "      conversationUrl,\n" not in route:
+        route = route.replace(
+            "      conversationId,\n      job,",
+            "      conversationId,\n      conversationUrl,\n      job,",
+        )
+        changed = True
+    response_line = "      conversation_id: result.conversation_id || null,"
+    if response_line in route and "conversation_url: result.conversation_url" not in route:
+        route = route.replace(
+            response_line,
+            response_line
+            + "\n      conversation_url: result.conversation_url || conversationUrl || null,",
+            1,
+        )
+        changed = True
+
+    gen_conv = "  const conversationId = req.body.conversation_id || null;"
+    if gen_conv in route and "req.body.conversation_url" not in route:
+        route = route.replace(
+            gen_conv,
+            gen_conv
+            + "\n  const conversationUrl = typeof req.body.conversation_url === 'string' ? req.body.conversation_url : null;",
+            1,
+        )
+        changed = True
+    option_line = "            conversationId: i === 0 ? conversationId : undefined,"
+    if option_line in route and "conversationUrl: i === 0" not in route:
+        route = route.replace(
+            option_line,
+            option_line + "\n            conversationUrl: i === 0 ? conversationUrl : undefined,",
+            1,
+        )
+        changed = True
+    first_line = "    let firstConversationId = conversationId;"
+    if first_line in route and "firstConversationUrl" not in route:
+        route = route.replace(
+            first_line, first_line + "\n    let firstConversationUrl = conversationUrl;", 1
+        )
+        changed = True
+    capture = "          if (i === 0 && result.conversationId) firstConversationId = result.conversationId;"
+    if capture in route and "result.conversationUrl" not in route:
+        route = route.replace(
+            capture,
+            capture
+            + "\n          if (i === 0 && result.conversationUrl) firstConversationUrl = result.conversationUrl;",
+            1,
+        )
+        changed = True
+    gen_response = "        conversation_id: firstConversationId || conversationId,"
+    if gen_response in route and "conversation_url: firstConversationUrl" not in route:
+        route = route.replace(
+            gen_response,
+            gen_response + "\n        conversation_url: firstConversationUrl || conversationUrl,",
+            1,
+        )
+        changed = True
+
+    if changed:
+        chatgpt_path.write_text(content, encoding="utf-8")
+        route_path.write_text(route, encoding="utf-8")
+    return changed
 
 
 def apply_worker_patches(worker):

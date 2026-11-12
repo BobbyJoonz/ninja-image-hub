@@ -228,7 +228,7 @@ This is the heart of the project: **accounts are isolated execution slots, not r
 | **Logs** | `data/accounts/<id>/worker.log` (token/password redaction on read) |
 | **Workspace** | `data/accounts/<id>/gateway/` — a private copy of the gateway sources per account |
 | **Live view** | real-time CDP screencast inside the worker: real cursor, click/drag/wheel/typing as trusted input, FPS+latency badges, classic-snapshot fallback; no extra ports, no VNC server |
-| **Quality Loop** | optional per-generation review: the generated image goes back to ChatGPT in the same chat, text/numbers are scored strictly and up to N same-chat repairs run only when a literal is wrong; first image kept, no loops, no auto-fail |
+| **Quality Loop / Project** | review and repair turns carry the project-aware conversation URL (`/g/<project>/c/<id>`); a bare UUID 404s for project chats, which the v2 gateway patch fixes |\n| **Quality Loop** | optional per-generation review: the generated image goes back to ChatGPT in the same chat, text/numbers are scored strictly and up to N same-chat repairs run only when a literal is wrong; first image kept, no loops, no auto-fail |
 | **Plan awareness** | reads the real plan from ChatGPT's own account API: Plus/Pro/Free, renewal/cancellation dates, days left, will-renew; `GET /api/accounts/<id>/plan`, `Refresh plan` in the dialog, health counters `accounts_free_plan`/`accounts_plan_expiring`, refreshed every 6 h |
 | **Project (optional)** | a per-account **ChatGPT project URL**: new generation chats open inside that project (e.g. *Ninja Image Hub*) instead of the normal chat list — guarded gateway patch, applied on worker start |
 

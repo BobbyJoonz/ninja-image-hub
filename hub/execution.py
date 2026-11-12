@@ -198,11 +198,16 @@ def execute_job(ctx, job_id, acc, prompt, aspect, quality_preference, n=1):
         quality_meta = None
         quality_score = None
         quality_verdict = None
-        conversation_id = (response_body.get("applied") or {}).get("conversation_id")
-        if (int(ctx.setting("quality_gate") or 0) > 0 or quality_rounds > 0) and conversation_id:
+        applied = response_body.get("applied") or {}
+        conversation_id = applied.get("conversation_id")
+        conversation_url = applied.get("conversation_url")
+        if (int(ctx.setting("quality_gate") or 0) > 0 or quality_rounds > 0) and (
+            conversation_url or conversation_id
+        ):
             response_body, quality_meta = _apply_quality_gate(
-                ctx, acc, prompt, conversation_id, response_body, payload, url,
-                thinking_mode, n, rounds=quality_rounds,
+                ctx, acc, prompt, conversation_id, conversation_url,
+                response_body, payload, url, thinking_mode, n,
+                rounds=quality_rounds,
             )
             if quality_meta:
                 quality_score = quality_meta.get("score")
@@ -308,8 +313,8 @@ def execute_job(ctx, job_id, acc, prompt, aspect, quality_preference, n=1):
         # minute the account just produced an image.
         ctx.touch_account(acc["id"])
 
-def _apply_quality_gate(ctx, acc, prompt, conversation_id, body, payload, url,
-                        thinking_mode, n, rounds=0):
+def _apply_quality_gate(ctx, acc, prompt, conversation_id, conversation_url, body,
+                        payload, url, thinking_mode, n, rounds=0):
     """Quality Loop: review the image in its own chat and regenerate up to ``rounds`` times.
 
     A per-job ``rounds`` value (1..3) opts this job in even when the global gate is off.
@@ -327,6 +332,7 @@ def _apply_quality_gate(ctx, acc, prompt, conversation_id, body, payload, url,
         "refines_allowed": refines_allowed,
         "threshold": threshold,
         "conversation_id": conversation_id,
+        "conversation_url": conversation_url,
         "history": [],
         "original_urls": [item.get("url") for item in (body.get("data") or []) if item.get("url")],
     }
@@ -340,7 +346,7 @@ def _apply_quality_gate(ctx, acc, prompt, conversation_id, body, payload, url,
         )
         current_review = quality.parse_review(
             _review_chat(
-                url_chat, acc, conversation_id,
+                url_chat, acc, conversation_id, conversation_url,
                 quality.build_review_prompt(prompt, template),
             )
         )
@@ -355,6 +361,8 @@ def _apply_quality_gate(ctx, acc, prompt, conversation_id, body, payload, url,
             refined_payload = dict(payload)
             refined_payload["prompt"] = correction
             refined_payload["conversation_id"] = conversation_id
+            if conversation_url:
+                refined_payload["conversation_url"] = conversation_url
             try:
                 refined = request_generation(url, acc["api_secret"], refined_payload, n)
             except Exception as exc:  # noqa: BLE001 - keep the best image so far
@@ -366,7 +374,7 @@ def _apply_quality_gate(ctx, acc, prompt, conversation_id, body, payload, url,
             try:
                 refined_review = quality.parse_review(
                     _review_chat(
-                        url_chat, acc, conversation_id,
+                        url_chat, acc, conversation_id, conversation_url,
                         quality.build_review_prompt(prompt, template),
                     )
                 )
@@ -409,13 +417,21 @@ def _history_entry(attempt, review):
     }
 
 
-def _review_chat(url_chat, acc, conversation_id, prompt):
-    """Ask the model to audit the image it just produced (same conversation)."""
+def _review_chat(url_chat, acc, conversation_id, conversation_url, prompt):
+    """Ask the model to audit the image it just produced (same conversation).
+
+    ``conversation_url`` is the project-aware page URL (/g/<project>/c/<id>) captured
+    from the generation turn; the UUID alone 404s for chats inside a project.
+    """
+    payload = {"messages": [{"role": "user", "content": prompt}]}
+    if conversation_url:
+        payload["conversation_url"] = conversation_url
+    if conversation_id:
+        payload["conversation_id"] = conversation_id
     response = request_chat(
         url_chat,
         acc["api_secret"],
-        {"conversation_id": conversation_id,
-         "messages": [{"role": "user", "content": prompt}]},
+        payload,
         timeout=180.0,
     )
     if response.status_code != 200 or not isinstance(response.data, dict):

@@ -104,7 +104,10 @@ def test_quality_loop_refines_until_score_improves(monkeypatch):
     )
     calls = {"refine": 0}
 
+    seen_payloads = []
+
     def fake_chat(url, secret, payload, timeout=180.0):
+        seen_payloads.append(payload)
         return SimpleNamespace(
             status_code=200,
             data={"choices": [{"message": {"content": next(prompts)}}]},
@@ -125,7 +128,9 @@ def test_quality_loop_refines_until_score_improves(monkeypatch):
     )
     acc = {"api_secret": "x"}
     body, meta = execution._apply_quality_gate(
-        ctx, acc, "a poster with the number 15", "conv-1", {"data": [{"url": "orig.png"}]},
+        ctx, acc, "a poster with the number 15", "conv-1",
+        "https://chatgpt.com/g/g-p-demo-ninja/c/conv-1",
+        {"data": [{"url": "orig.png"}]},
         {"n": 1}, "http://127.0.0.1:41000/v1/images/generations", "extended", 1, rounds=2,
     )
     assert calls["refine"] == 1
@@ -134,6 +139,11 @@ def test_quality_loop_refines_until_score_improves(monkeypatch):
     assert meta["attempts"] == 1
     assert meta["score"] == 10
     assert meta["original_urls"] == ["orig.png"]
+    assert meta["conversation_url"].endswith("/g/g-p-demo-ninja/c/conv-1")
+    assert seen_payloads and seen_payloads[0]["conversation_url"].endswith(
+        "/g/g-p-demo-ninja/c/conv-1"
+    )
+    assert seen_payloads[0]["messages"][0]["content"]
 
 
 def test_quality_loop_without_rounds_uses_global_mode(monkeypatch):
@@ -162,7 +172,8 @@ def test_quality_loop_without_rounds_uses_global_mode(monkeypatch):
         upstream=lambda acc: "http://127.0.0.1:41000",
     )
     body, meta = execution._apply_quality_gate(
-        ctx, {"api_secret": "x"}, "p", "conv-1", {"data": [{"url": "orig.png"}]},
+        ctx, {"api_secret": "x"}, "p", "conv-1", None,
+        {"data": [{"url": "orig.png"}]},
         {"n": 1}, "http://127.0.0.1:41000/v1/images/generations", "extended", 1, rounds=0,
     )
     assert body["data"][0]["url"] == "orig.png"
@@ -208,3 +219,31 @@ def test_quality_prompt_api_roundtrip(loaded):
     assert bad.status_code == 422
     reset = client.delete("/api/quality/prompt", headers=headers)
     assert reset.status_code == 200 and reset.json()["is_custom"] is False
+
+
+def test_quality_gate_v2_project_url_patch(tmp_path):
+    """v2 must upgrade a v1 worker and carry project-aware conversation URLs."""
+    import shutil
+
+    from hub import gateway_patches as patches
+
+    worker = tmp_path / "gateway"
+    (worker / "src" / "routes").mkdir(parents=True)
+    shutil.copy("vendor/gpt-web-gateway/src/chatgpt.js", worker / "src" / "chatgpt.js")
+    shutil.copy(
+        "vendor/gpt-web-gateway/src/routes/images.js",
+        worker / "src" / "routes" / "images.js",
+    )
+    assert patches._patch_quality_gate(worker) is True
+    assert patches._patch_quality_gate_v2(worker) is True
+    chatgpt = (worker / "src" / "chatgpt.js").read_text(encoding="utf-8", errors="replace")
+    routes = (worker / "src" / "routes" / "images.js").read_text(
+        encoding="utf-8", errors="replace"
+    )
+    assert "normalizeConversationUrl" in chatgpt
+    assert "openConversationUrl(p, options.conversationUrl)" in chatgpt
+    assert "conversationUrlFromPage(p.url())" in chatgpt
+    assert "req.body.conversation_url" in routes
+    assert "firstConversationUrl" in routes
+    # idempotent on the upgraded copy
+    assert patches._patch_quality_gate_v2(worker) is False
