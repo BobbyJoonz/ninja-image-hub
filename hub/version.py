@@ -11,7 +11,7 @@ from pathlib import Path
 _ROOT = Path(__file__).resolve().parents[1]
 
 
-def _read_version():
+def _read_version() -> str:
     try:
         data = json.loads((_ROOT / "package.json").read_text(encoding="utf-8"))
         value = str(data.get("version") or "").strip()

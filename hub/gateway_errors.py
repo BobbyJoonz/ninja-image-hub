@@ -4,25 +4,15 @@
 either a proven failure (nothing usable was delivered) or a genuine unknown.
 """
 
-CERTAIN_GATEWAY_FAILURE_KINDS = frozenset(
-    {
-        "invalid_request",
-        "unauthorized",
-        "page_load_failed",
-        "login_failed",
-        "login_required",
-        "upload_failed",
-        "queue_full",
-        "policy_violation",
-        "refused",
-        "image_generation_failed",
-        "generation_failed",
-    }
-)
+from collections.abc import Mapping
+from typing import TypedDict
 
-
+# Gateway error kinds that prove nothing usable was delivered: validation/login/page-load/
+# composer-upload failures happen before the prompt is sent, and policy/refusal or an
+# explicit "generation failed" turn means the provider itself reported no image. These are
+# terminal failures, not upstream-uncertain outcomes. Anything else (timeout, server_error,
 # empty kind) stays `unknown` so it is never re-submitted automatically.
-CERTAIN_GATEWAY_FAILURE_KINDS = frozenset(
+CERTAIN_GATEWAY_FAILURE_KINDS: frozenset[str] = frozenset(
     {
         "invalid_request",
         "unauthorized",
@@ -39,15 +29,24 @@ CERTAIN_GATEWAY_FAILURE_KINDS = frozenset(
 )
 
 
-def parse_gateway_failure(status, data):
+class GatewayFailure(TypedDict):
+    status: int
+    kind: str
+    message: str
+    blocker: str
+    certain_failure: bool
+
+
+def parse_gateway_failure(status: int, data: object) -> GatewayFailure:
     """Extract error_kind/message/login_blocker from a gateway error body.
 
     The gateway returns these at the top level; older builds only had `error.message`, so
     a couple of narrow message fallbacks keep the classification useful after upgrades.
     Deliberately conservative: an unknown kind must stay unknown.
     """
-    body = data if isinstance(data, dict) else {}
-    error = body.get("error") if isinstance(body.get("error"), dict) else {}
+    body: Mapping[str, object] = data if isinstance(data, Mapping) else {}
+    error_raw = body.get("error")
+    error: Mapping[str, object] = error_raw if isinstance(error_raw, Mapping) else {}
     kind = str(body.get("error_kind") or "").strip().lower()
     message = str(error.get("message") or "").strip()
     blocker = str(body.get("login_blocker") or "").strip()
@@ -68,7 +67,7 @@ def parse_gateway_failure(status, data):
     }
 
 
-def gateway_failure_text(failure):
+def gateway_failure_text(failure: GatewayFailure) -> str:
     label = failure["kind"] or "gateway_error"
     detail = f"Gateway {label} (HTTP {failure['status']})"
     if failure["message"]:

@@ -21,8 +21,11 @@ Worst cases covered by design:
 * setting holds an unknown word -> caller falls back to the safe default (High)
 """
 
+from collections.abc import Mapping
+from typing import TypedDict
+
 # Canonical operator-facing effort -> gateway thinking_mode.
-EFFORT_TO_GATEWAY = {
+EFFORT_TO_GATEWAY: dict[str, str] = {
     "high": "extended",
     "extra_high": "extra_high",
     "medium": "standard",
@@ -31,7 +34,7 @@ EFFORT_TO_GATEWAY = {
 }
 
 # Gateway modes echoed back -> canonical effort.
-MODE_TO_EFFORT = {
+MODE_TO_EFFORT: dict[str, str] = {
     "extended": "high",
     "high": "high",
     "standard": "medium",
@@ -42,7 +45,7 @@ MODE_TO_EFFORT = {
     "pro": "pro",
 }
 
-EFFORT_LABELS = {
+EFFORT_LABELS: dict[str, str] = {
     "high": "High",
     "extra_high": "Extra High",
     "medium": "Medium",
@@ -50,13 +53,26 @@ EFFORT_LABELS = {
     "pro": "Pro",
 }
 
-VALID_EFFORTS = tuple(EFFORT_TO_GATEWAY)
-DEFAULT_EFFORT = "high"
+VALID_EFFORTS: tuple[str, ...] = tuple(EFFORT_TO_GATEWAY)
+DEFAULT_EFFORT: str = "high"
 # Weakest -> strongest. Used only to decide whether the applied tier was a downgrade.
-_ORDER = {name: index for index, name in enumerate(["instant", "medium", "high", "extra_high", "pro"])}
+_ORDER: dict[str, int] = {
+    name: index
+    for index, name in enumerate(["instant", "medium", "high", "extra_high", "pro"])
+}
 
 
-def normalize_effort(value, default=DEFAULT_EFFORT):
+class EffortSummary(TypedDict):
+    requested: str
+    applied: str | None
+    applied_raw: object
+    verified: bool | None
+    fallback: object
+    mixed: bool
+    degraded: bool | None
+
+
+def normalize_effort(value: object, default: str = DEFAULT_EFFORT) -> str:
     """Map free-form input (env, API) to a canonical effort, else the safe default."""
     text = str(value if value is not None else "").strip().lower().replace(" ", "_").replace("-", "_")
     aliases = {
@@ -71,26 +87,26 @@ def normalize_effort(value, default=DEFAULT_EFFORT):
     return text if text in EFFORT_TO_GATEWAY else default
 
 
-def gateway_mode(effort):
+def gateway_mode(effort: object) -> str | None:
     return EFFORT_TO_GATEWAY.get(normalize_effort(effort))
 
 
-def canonical_mode(mode):
+def canonical_mode(mode: object) -> str | None:
     return MODE_TO_EFFORT.get(str(mode or "").strip().lower())
 
 
-def effort_label(effort):
+def effort_label(effort: object) -> str:
     return EFFORT_LABELS.get(normalize_effort(effort), EFFORT_LABELS[DEFAULT_EFFORT])
 
 
-def summarize(applied, requested_effort):
+def summarize(applied: object, requested_effort: object) -> EffortSummary:
     """Turn the gateway echo into a record we can store and show.
 
     Returns canonical effort names, a tri-state ``verified`` and flags. Missing echo is
     reported as unknown (None), never as success.
     """
     requested = normalize_effort(requested_effort)
-    echo = applied if isinstance(applied, dict) else {}
+    echo: Mapping[str, object] = applied if isinstance(applied, Mapping) else {}
     applied_raw = echo.get("thinking_mode")
     applied_effort = canonical_mode(applied_raw)
     verified_raw = echo.get("thinking_verified")
@@ -115,12 +131,21 @@ def summarize(applied, requested_effort):
     }
 
 
-def badge(summary):
+def badge(summary: Mapping[str, object] | None) -> str | None:
     """Short operator-facing status for a job row."""
     if not summary or not summary.get("requested"):
         return None
-    want = EFFORT_LABELS.get(summary["requested"], summary["requested"])
-    got = EFFORT_LABELS.get(summary.get("applied"), summary.get("applied_raw") or "?")
+    requested = summary["requested"]
+    if isinstance(requested, str):
+        want = EFFORT_LABELS.get(requested, requested)
+    else:
+        want = str(requested)
+    applied = summary.get("applied")
+    got = (
+        EFFORT_LABELS.get(applied, str(summary.get("applied_raw") or "?"))
+        if isinstance(applied, str)
+        else str(summary.get("applied_raw") or "?")
+    )
     if summary.get("mixed"):
         return f"{want} · mixed"
     if summary.get("degraded"):

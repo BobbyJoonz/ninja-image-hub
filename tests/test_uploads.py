@@ -359,7 +359,7 @@ def test_upload_ui_contract():
     html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
     app = "\n".join(
         (ROOT / "frontend" / name).read_text(encoding="utf-8")
-        for name in ("app.js", "modules/studio.js")
+        for name in ("app.js", "modules/studio.js", "modules/generate.js")
     )
     api = (ROOT / "frontend" / "modules" / "api.js").read_text(encoding="utf-8")
     views = (ROOT / "frontend" / "modules" / "views.js").read_text(encoding="utf-8")

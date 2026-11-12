@@ -1149,7 +1149,10 @@ def test_static_dashboard_features_exist(loaded):
     client, mod = loaded
     h = auth(client)
     html = client.get("/").text
-    js = client.get("/static/app.js").text
+    js = "\n".join(
+        client.get("/static/" + path).text
+        for path in ("app.js", "modules/generate.js", "modules/operations.js")
+    )
     assert 'data-page="operations"' in html
     assert 'data-page="analytics"' in html
     assert 'id="controlForm"' in html and 'id="analyticsChart"' in html

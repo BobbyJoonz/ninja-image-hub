@@ -136,8 +136,10 @@ The docs above are the current description. Older versioned documents were remov
 ## Code layout
 
 - Gateway runtime patches live in `hub/gateway_patches.py` as an idempotent registry
-  (`PATCH_ORDER`, `PATCH_MARKERS`, `apply_worker_patches`); `hub/workers.py` must only call
-  the registry and keep the lifecycle. Doctor imports the same marker names, never a literal.
+  (`PATCH_ORDER`, `PATCH_MARKERS`, `apply_worker_patches`); the injected JS itself lives in
+  `hub/patches/*.js` and is loaded read-only. Doctor imports the same marker names, never a
+  literal. Worker child-process lifecycle lives in `hub/worker_process.py`; diagnostics and
+  status stay in `hub/workers.py`, which re-exports the lifecycle for the runtime/tests.
 - A job's single execution lives in `hub/execution.py`; the scheduler keeps dispatch,
   health, wake/reap and supervision. Failure classification lives in `hub/gateway_errors.py`.
 - Shared test scaffolding lives in `tests/conftest.py` + `tests/helpers.py` (`build_hub`,
@@ -149,8 +151,12 @@ The docs above are the current description. Older versioned documents were remov
   handshake in a new script.
 - Styles are `frontend/styles/base.css` + `features.css` (the UI links both); `style.css`
   remains an aggregating `@import` entry point for compatibility. Tests read `all_css()`.
-- `.github/workflows/ci.yml` runs static checks (ruff real errors, compile, JS syntax, node
-  tests, icons, seal, offline test subset) and a best-effort full suite; keep it green.
+- `frontend/app.js` is only the entrypoint: bootstrap/login/nav/account wiring lives in
+  `modules/bootstrap.js`, generation in `modules/generate.js`, gallery/operations/jobs
+  toolbars in their own modules. Do not grow app.js back into a god file.
+- `.github/workflows/ci.yml` runs static checks (ruff real errors, strict mypy for the pure
+  modules in `pyproject.toml`, compile, JS syntax, node tests, icons, seal, offline test
+  subset) and the full suite as a required job; keep both green.
 
 ## Frontend and preview
 

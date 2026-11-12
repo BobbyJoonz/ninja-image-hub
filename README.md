@@ -196,8 +196,9 @@ flowchart LR
 | `hub/jobs.py` | Queue insert, idempotency, validation, serialization |
 | `hub/scheduler.py` | Fair dispatch, health snapshot, wake/reap, crash supervisor (loop + policy only) |
 | `hub/execution.py`, `hub/gateway_errors.py` | One job execution and the honest failure classification, testable independently of the loop |
-| `hub/accounts.py`, `hub/workers.py` | Account lifecycle, port allocation, env allowlist, Xvfb, orphan reclaim |
-| `hub/gateway_patches.py` | Idempotent, fail-open runtime patches for the pinned gateway; one registry the doctor can verify |
+| `hub/accounts.py` | Account CRUD, archive/purge, plan/identity storage |
+| `hub/workers.py`, `hub/worker_process.py` | Worker diagnostics/status vs. child-process lifecycle (ports, env, launch, stop, orphan reclaim) |
+| `hub/gateway_patches.py`, `hub/patches/*.js` | Idempotent, fail-open runtime patches for the pinned gateway; injected JS lives in reviewable asset files |
 | `hub/gateway_patches.py` | Idempotent, fail-open runtime patches for the pinned gateway; one registry the doctor can verify |
 | `hub/gateway.py` | Upstream HTTP contract (bounded JSON envelope, no replay) |
 | `hub/media.py`, `hub/storage.py`, `hub/delivery.py` | Chunked budgets, atomic publish, previews, ZIP, Range |

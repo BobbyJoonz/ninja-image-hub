@@ -286,3 +286,23 @@ CI روی GitHub runner هنوز اجرا نشده (فقط YAML و دستوره�
 - jobهای CI خود pytest را نصب نمی‌کردند (requirements فقط runtime است)؛ اکنون هر دو job pytest را نصب می‌کنند.
 - 
 uff check محلی: All checks passed.
+
+
+## v0.14.0 — شکستن lifecycle، انتقال JS پچ‌ها، ماژول‌های فرانت و type-check
+
+| مورد | قبل | بعد |
+|---|---|---|
+| `hub/workers.py` | ۷۸۴ خط | **۳۱۲** (diagnostics/status + re-export) |
+| `hub/worker_process.py` | — | **۵۶۷** (ports/env/launch/stop/orphan/reclaim) |
+| `hub/gateway_patches.py` | ۴۲۶ خط | **~۳۳۰**؛ JS تزریقی در `hub/patches/*.js` (۳۱۵ خط قابل‌review) |
+| `frontend/app.js` | ۳۳۳ خط | **~۱۴ خط** entrypoint |
+| ماژول‌های جدید فرانت | — | bootstrap ۱۵۸ · generate ۹۴ · operations ۸۷ · jobs_toolbar ۳۳ · gallery ۱۲ |
+| type checking | هیچ | **mypy strict** برای `gateway_errors.py`, `version.py`, `effort.py` (۰ خطا) |
+| CI full suite | continue-on-error | **required** (بدون continue-on-error) |
+
+**اعتبارسنجی:** ۱۵۷ passed، ۱ skipped · node ۶/۶ · ruff همه پاس · mypy strict ۳ فایل پاس ·
+browser smoke همهٔ ۸ view بدون exception · preview byte-identical · seal از clone.
+
+**ریسک باقی‌مانده:** `worker_process.py` ۵۶۷ خط و `accounts.js` ۵۸۵ خط هنوز بزرگ‌اند؛
+type-check فقط ماژول‌های pure را پوشش می‌دهد (ctx داینامیک عمداً خارج است)؛ 
+تست patch گیت‌وی روی CI به‌خاطر نبود `vendor/` skip می‌شود.

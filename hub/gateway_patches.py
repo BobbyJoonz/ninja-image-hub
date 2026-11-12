@@ -6,7 +6,6 @@ the worker usable, just without the optimisation). Keeping them in one registry 
 doctor verify the same markers that the worker applies.
 """
 
-import os
 import pathlib
 import re
 import sys
@@ -34,6 +33,20 @@ PATCH_MARKERS = {
     "launch_args": "ninja:launch-args",
     "image_failure": "ninja:image-failure-detect",
 }
+
+
+_ASSET_DIR = pathlib.Path(__file__).resolve().parent / "patches"
+
+
+def _asset(name):
+    """Load JS injected into the vendored gateway, keeping this module readable."""
+    return (_ASSET_DIR / name).read_text(encoding="utf-8")
+
+
+DIAGNOSTICS_JS = _asset("diagnostics.js")
+PLAN_PROBE_JS = _asset("plan_probe.js")
+SETTINGS_PROBE_JS = _asset("settings_probe.js")
+LIVE_VIEW_JS = _asset("live_view.js")
 
 
 POPUP_FOLLOW_MARKER = "ninja:popup-follow"
@@ -146,33 +159,6 @@ def _patch_project_url(worker):
 
 PAGES_PATCH_MARKER = "ninja:pages-routes"
 
-DIAGNOSTICS_JS = r"""// ninja:pages-routes — diagnostics for project routing.
-// GET /login/url   -> URL/title of the page the remote login is currently driving.
-// GET /login/pages -> every page open in the browser context (to prove where a
-//                     generation chat landed: normal list /c/<id> vs project
-//                     /g/g-p-.../c/<id>).
-router.get('/login/url', async (req, res) => {
-  try {
-    await enterManualLogin({ acquire: false });
-    const page = await getLoginPage();
-    res.json({ url: page.url(), title: await page.title().catch(() => '') });
-  } catch (err) {
-    res.status(err.status || 500).json({ error: err.message });
-  }
-});
-
-router.get('/login/pages', async (req, res) => {
-  try {
-    await enterManualLogin({ acquire: false });
-    const ctx = await getContext();
-    const pages = ctx.pages().filter((page) => page && !page.isClosed());
-    res.json({ pages: pages.map((page) => ({ url: page.url() })) });
-  } catch (err) {
-    res.status(err.status || 500).json({ error: err.message });
-  }
-});
-
-module.exports = router;"""
 
 # The first release wrote enterManualLogin() into a variable; upgrade those copies.
 BROKEN_URL_ROUTE = (
@@ -220,301 +206,13 @@ def _strip_probe_routes(content, family):
     return pattern.sub("", content)
 
 
-PLAN_PROBE_JS = r"""// ninja:plan-probe-v2 — read the signed-in account's plan from ChatGPT's own web API.
-// Runs on any open chatgpt.com page (or a temporary one) and never acquires the
-// manual-login lease, so it is safe during/next to generation jobs. Returns only
-// billing-relevant fields: never tokens, cookies or chat content.
-router.get('/login/plan', async (req, res) => {
-  let temp = null;
-  try {
-    const context = await getContext();
-    let page = null;
-    for (const candidate of context.pages()) {
-      if (candidate && !candidate.isClosed() && (candidate.url() || '').startsWith('https://chatgpt.com')) {
-        page = candidate;
-        break;
-      }
-    }
-    if (!page) {
-      temp = await context.newPage();
-      page = temp;
-      await page.goto('https://chatgpt.com', { waitUntil: 'domcontentloaded', timeout: 45000 });
-    }
-    const data = await page.evaluate(async () => {
-      const out = {};
-      const grab = async (key, url) => {
-        try {
-          const r = await fetch(url, { credentials: 'include', headers: { accept: 'application/json' } });
-          let body = null;
-          if (r.status === 200) {
-            try { body = await r.json(); } catch (e) { body = null; }
-          }
-          out[key] = { status: r.status, body };
-        } catch (e) {
-          out[key] = { error: String((e && e.message) || e) };
-        }
-      };
-      await grab('me', '/backend-api/me');
-      await grab('check', '/backend-api/accounts/check/v4-2023-04-27');
-      try {
-        const r = await fetch('/api/auth/session', { credentials: 'include' });
-        const s = r.status === 200 ? await r.json() : null;
-        out.session = {
-          status: r.status,
-          expires: s && s.expires ? s.expires : null,
-          user: s && s.user ? { id: s.user.id || null, email: s.user.email || null } : null,
-        };
-      } catch (e) {
-        out.session = { error: String((e && e.message) || e) };
-      }
-      return out;
-    });
-    res.json(data);
-  } catch (err) {
-    res.status(err.status || 500).json({ error: err.message });
-  } finally {
-    if (temp && !temp.isClosed()) {
-      try { await temp.close(); } catch (e) {}
-    }
-  }
-});
-
-module.exports = router;"""
 
 SETTINGS_PROBE_MARKER = "ninja:settings-probe-v2"
 
-SETTINGS_PROBE_JS = r"""// ninja:settings-probe-v2 — read Settings -> Account (plan + workspace id).
-router.get('/login/settings', async (req, res) => {
-  let temp = null;
-  try {
-    const context = await getContext();
-    temp = await context.newPage();
-    await temp.goto('https://chatgpt.com/settings/account', { waitUntil: 'domcontentloaded', timeout: 45000 });
-    await temp.waitForTimeout(4500);
-    const payload = await temp.evaluate(() => {
-      const match = document.cookie.match(/(?:^|;\s*)_account=([^;]+)/);
-      return {
-        workspaceId: match ? decodeURIComponent(match[1]) : null,
-        url: location.href,
-        title: document.title,
-        text: document.body ? document.body.innerText.slice(0, 8000) : '',
-      };
-    });
-    res.json({ page: payload });
-  } catch (err) {
-    res.status(err.status || 500).json({ error: err.message });
-  } finally {
-    if (temp && !temp.isClosed()) {
-      try { await temp.close(); } catch (e) {}
-    }
-  }
-});
-
-module.exports = router;"""
 
 
 LIVE_VIEW_MARKER = "ninja:live-view"
 
-LIVE_VIEW_JS = r"""// ninja:live-view — real-time frames, trusted input, hover cursor + click feedback.
-// GET  /login/live?mode=poll|screencast&q=fast|balanced|sharp -> multipart MJPEG
-// GET  /login/cursor?x=&y= -> what the remote page would do with the pointer there
-// POST /login/input -> batched mouse/key/text events via CDP Input domain
-const LIVE_PRESETS = {
-  fast: { quality: 30, maxWidth: 720, maxHeight: 450, interval: 45, scale: 0.55 },
-  balanced: { quality: 38, maxWidth: 860, maxHeight: 560, interval: 55, scale: 0.7 },
-  sharp: { quality: 52, maxWidth: 1280, maxHeight: 800, interval: 80, scale: 1 },
-};
-
-router.get('/login/live', async (req, res) => {
-  let client = null;
-  let timer = null;
-  let closed = false;
-  try {
-    await enterManualLogin({ acquire: false });
-    const page = await getLoginPage();
-    const mode = (req.query && req.query.mode) === 'screencast' ? 'screencast' : 'poll';
-    const preset = LIVE_PRESETS[(req.query && req.query.q) || 'fast'] || LIVE_PRESETS.fast;
-    res.writeHead(200, {
-      'Content-Type': 'multipart/x-mixed-replace; boundary=frame',
-      'Cache-Control': 'no-store, no-cache, must-revalidate',
-      'Pragma': 'no-cache',
-      'Connection': 'keep-alive',
-      'X-Accel-Buffering': 'no',
-    });
-
-    const writeFrame = (buffer) => {
-      if (closed) return;
-      res.write('--frame\r\nContent-Type: image/jpeg\r\nContent-Length: ' + buffer.length + '\r\n\r\n');
-      res.write(buffer);
-      res.write('\r\n');
-    };
-
-    if (mode === 'screencast') {
-      try { await page.bringToFront(); } catch (e) {}
-      // Keep the compositor busy with a 2px pulse: screencast only emits on repaint.
-      await page.evaluate(() => {
-        if (document.getElementById('__ninja_live_pulse__')) return;
-        const dot = document.createElement('div');
-        dot.id = '__ninja_live_pulse__';
-        dot.style.cssText =
-          'position:fixed;left:0;top:0;width:2px;height:2px;opacity:.98;pointer-events:none;z-index:2147483647';
-        document.documentElement.appendChild(dot);
-        const style = document.createElement('style');
-        style.textContent =
-          '@keyframes __ninja_live_pulse{from{opacity:.96}to{opacity:1}}' +
-          '#__ninja_live_pulse__{animation:__ninja_live_pulse 1s linear infinite}';
-        document.documentElement.appendChild(style);
-      }).catch(() => {});
-      client = await page.context().newCDPSession(page);
-      client.on('Page.screencastFrame', async (frame) => {
-        if (closed) return;
-        try {
-          writeFrame(Buffer.from(frame.data, 'base64'));
-          await client.send('Page.screencastFrameAck', { sessionId: frame.sessionId });
-        } catch (err) {}
-      });
-      await client.send('Page.startScreencast', {
-        format: 'jpeg',
-        quality: preset.quality,
-        maxWidth: preset.maxWidth,
-        maxHeight: preset.maxHeight,
-        everyNthFrame: 1,
-      });
-    } else {
-      client = await page.context().newCDPSession(page);
-      let busy = false;
-      timer = setInterval(async () => {
-        if (closed || busy) return;
-        busy = true;
-        try {
-          const shot = await client.send('Page.captureScreenshot', {
-            format: 'jpeg',
-            quality: preset.quality,
-            optimizeForSpeed: true,
-            fromSurface: true,
-            clip: {
-              x: 0,
-              y: 0,
-              width: page.viewportSize() ? page.viewportSize().width : 1280,
-              height: page.viewportSize() ? page.viewportSize().height : 800,
-              scale: preset.scale,
-            },
-          });
-          writeFrame(Buffer.from(shot.data, 'base64'));
-        } catch (err) {}
-        busy = false;
-      }, preset.interval);
-    }
-
-    req.on('close', async () => {
-      closed = true;
-      if (timer) clearInterval(timer);
-      if (client) {
-        try { await client.send('Page.stopScreencast'); } catch (err) {}
-        try { await client.detach(); } catch (err) {}
-      }
-      try { res.end(); } catch (e) {}
-    });
-  } catch (err) {
-    if (timer) clearInterval(timer);
-    if (client) { try { await client.detach(); } catch (e) {} }
-    if (!res.headersSent) res.status(err.status || 500).json({ error: err.message });
-    else res.end();
-  }
-});
-
-router.get('/login/cursor', async (req, res) => {
-  try {
-    await enterManualLogin({ acquire: false });
-    const page = await getLoginPage();
-    const x = Number((req.query && req.query.x) || 0);
-    const y = Number((req.query && req.query.y) || 0);
-    const info = await page.evaluate(({ x, y }) => {
-      const el = document.elementFromPoint(x, y);
-      if (!el) return { cursor: 'default', tag: null, editable: false };
-      const style = window.getComputedStyle(el);
-      const tag = (el.tagName || '').toLowerCase();
-      const editable = Boolean(
-        el.isContentEditable ||
-          tag === 'input' ||
-          tag === 'textarea' ||
-          el.closest('[contenteditable="true"]'),
-      );
-      const interactive =
-        editable ||
-        tag === 'button' ||
-        tag === 'a' ||
-        tag === 'select' ||
-        Boolean(el.closest('button, a, [role="button"], [role="menuitem"]'));
-      let cursor = style.cursor || 'default';
-      if (editable) cursor = 'text';
-      else if (interactive && (cursor === 'auto' || cursor === 'default')) cursor = 'pointer';
-      return { cursor, tag, editable, interactive };
-    }, { x, y });
-    res.json(info);
-  } catch (err) {
-    res.status(err.status || 500).json({ error: err.message });
-  }
-});
-
-const LIVE_VK = {
-  Enter: 13, Tab: 9, Backspace: 8, Escape: 27, ArrowUp: 38, ArrowDown: 40,
-  ArrowLeft: 37, ArrowRight: 39, Delete: 46, Home: 36, End: 35,
-  PageUp: 33, PageDown: 34, ' ': 32, Shift: 16, Control: 17, Alt: 18, Meta: 91,
-};
-
-router.post('/login/input', async (req, res) => {
-  let client = null;
-  try {
-    await enterManualLogin({ acquire: false });
-    const page = await getLoginPage();
-    try { await page.bringToFront(); } catch (e) {}
-    client = await page.context().newCDPSession(page);
-    const events = Array.isArray(req.body && req.body.events) ? req.body.events.slice(0, 200) : [];
-    for (const ev of events) {
-      if (!ev || typeof ev !== 'object') continue;
-      if (ev.type === 'mouse') {
-        await client.send('Input.dispatchMouseEvent', {
-          type: ev.action === 'down' ? 'mousePressed' : ev.action === 'up' ? 'mouseReleased' : ev.action === 'wheel' ? 'mouseWheel' : 'mouseMoved',
-          x: Number(ev.x) || 0,
-          y: Number(ev.y) || 0,
-          button: ev.button === 'right' ? 'right' : 'left',
-          buttons: Number(ev.buttons) || 0,
-          clickCount: 1,
-          deltaX: Number(ev.deltaX) || 0,
-          deltaY: Number(ev.deltaY) || 0,
-        });
-      } else if (ev.type === 'key') {
-        const vk = Number(ev.vk) || LIVE_VK[ev.key] || 0;
-        const key = String(ev.key || '');
-        await client.send('Input.dispatchKeyEvent', {
-          type: 'rawKeyDown', key, code: key,
-          windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk,
-        });
-        await client.send('Input.dispatchKeyEvent', {
-          type: 'keyUp', key, code: key,
-          windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk,
-        });
-      } else if (ev.type === 'text') {
-        const chunk = String(ev.text || '').slice(0, 500);
-        if (!chunk) continue;
-        await client.send('Input.insertText', { text: chunk });
-        const last = chunk[chunk.length - 1];
-        await client.send('Input.dispatchKeyEvent', {
-          type: 'keyDown', key: last, text: last, unmodifiedText: last,
-        });
-        await client.send('Input.dispatchKeyEvent', { type: 'keyUp', key: last });
-      }
-    }
-    res.json({ ok: true, applied: events.length });
-  } catch (err) {
-    res.status(err.status || 500).json({ error: err.message });
-  } finally {
-    if (client) { try { await client.detach(); } catch (e) {} }
-  }
-});
-
-module.exports = router;"""
 
 
 def _patch_live_view(worker):
