@@ -65,9 +65,28 @@ def digest(path):
     return hashlib.sha256(data).hexdigest()
 
 
+def _tracked_files():
+    """Tracked files only: untracked logs/caches/scratch files must not break a release seal."""
+    import subprocess
+
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(ROOT), "ls-files", "-z"],
+            capture_output=True,
+            check=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    names = [name for name in completed.stdout.decode("utf-8", "replace").split("\0") if name]
+    return [ROOT / name for name in names]
+
+
 def entries():
+    tracked = _tracked_files()
+    paths = tracked if tracked is not None else sorted(ROOT.rglob("*"))
     result = {}
-    for path in sorted(ROOT.rglob("*")):
+    for path in paths:
         if not path.is_file():
             continue
         rel = path.relative_to(ROOT)
