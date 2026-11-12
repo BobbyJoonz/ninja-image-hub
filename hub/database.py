@@ -115,6 +115,7 @@ def initialize_database(ctx):
         Column("idempotency_key", String(128)),
         Column("conversation_id", String(36)),
         Column("quality_score", Integer),
+        Column("quality_rounds", Integer, nullable=False, default=0),
         Column("quality_verdict", String(16)),
         Column("quality_meta", String(4000)),
         Column("image_file", String(120)),
@@ -190,6 +191,7 @@ def initialize_database(ctx):
             "jobs": {
                 "conversation_id": "VARCHAR(36)",
                 "quality_score": "INTEGER",
+                "quality_rounds": "INTEGER DEFAULT 0 NOT NULL",
                 "quality_verdict": "VARCHAR(16)",
                 "quality_meta": "VARCHAR(4000)",
                 "quality_preference": "VARCHAR(16) DEFAULT 'best' NOT NULL",

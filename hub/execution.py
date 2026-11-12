@@ -43,11 +43,13 @@ def execute_job(ctx, job_id, acc, prompt, aspect, quality_preference, n=1):
         # The upload id is read from the job row so execute_job keeps its historical
         # signature (tests and callbacks patch it with exactly these arguments).
         with ctx.engine.connect() as conn:
-            upload_id = conn.execute(
-                select(ctx.jobs.c.reference_upload_id).where(
-                    ctx.jobs.c.id == job_id
-                )
-            ).scalar_one_or_none()
+            job_row = conn.execute(
+                select(
+                    ctx.jobs.c.reference_upload_id, ctx.jobs.c.quality_rounds
+                ).where(ctx.jobs.c.id == job_id)
+            ).first()
+        upload_id = job_row[0] if job_row else None
+        quality_rounds = int((job_row[1] if job_row else 0) or 0)
         files = None
         if upload_id:
             upload = ctx.load_upload(upload_id)
@@ -197,10 +199,10 @@ def execute_job(ctx, job_id, acc, prompt, aspect, quality_preference, n=1):
         quality_score = None
         quality_verdict = None
         conversation_id = (response_body.get("applied") or {}).get("conversation_id")
-        if int(ctx.setting("quality_gate") or 0) > 0 and conversation_id:
+        if (int(ctx.setting("quality_gate") or 0) > 0 or quality_rounds > 0) and conversation_id:
             response_body, quality_meta = _apply_quality_gate(
                 ctx, acc, prompt, conversation_id, response_body, payload, url,
-                thinking_mode, n,
+                thinking_mode, n, rounds=quality_rounds,
             )
             if quality_meta:
                 quality_score = quality_meta.get("score")
@@ -307,63 +309,96 @@ def execute_job(ctx, job_id, acc, prompt, aspect, quality_preference, n=1):
         ctx.touch_account(acc["id"])
 
 def _apply_quality_gate(ctx, acc, prompt, conversation_id, body, payload, url,
-                        thinking_mode, n):
-    """Review a generated image in its own chat; optionally regenerate once.
+                        thinking_mode, n, rounds=0):
+    """Quality Loop: review the image in its own chat and regenerate up to ``rounds`` times.
 
-    The gate never fails a job: any review/regeneration problem keeps the first image.
+    A per-job ``rounds`` value (1..3) opts this job in even when the global gate is off.
+    Each round = one correction generation in the same conversation, followed by a fresh
+    review; only an improved image replaces the current one. Never raises, never loops
+    indefinitely, and never fails the job.
     """
     mode = int(ctx.setting("quality_gate") or 0)
     threshold = int(ctx.setting("quality_threshold") or 8)
-    meta = {"mode": mode, "threshold": threshold, "conversation_id": conversation_id}
+    refines_allowed = max(0, min(3, rounds if rounds > 0 else (1 if mode >= 2 else 0)))
+    meta = {
+        "quality_loop": True,
+        "mode": mode,
+        "rounds_requested": rounds,
+        "refines_allowed": refines_allowed,
+        "threshold": threshold,
+        "conversation_id": conversation_id,
+        "history": [],
+        "original_urls": [item.get("url") for item in (body.get("data") or []) if item.get("url")],
+    }
     try:
         url_chat = ctx.upstream(acc) + "/v1/chat/completions"
-        review = quality.parse_review(
+        current = body
+        current_review = quality.parse_review(
             _review_chat(url_chat, acc, conversation_id, quality.build_review_prompt(prompt))
         )
-        meta["review"] = review
-        meta["score"] = review.get("overall")
-        meta["verdict"] = review.get("verdict")
-        if mode < 2 or not quality.needs_refinement(review, threshold):
-            return body, meta
-        correction = quality.build_correction_prompt(prompt, review.get("issues"))
-        refined_payload = dict(payload)
-        refined_payload["prompt"] = correction
-        refined_payload["conversation_id"] = conversation_id
-        meta["original_urls"] = [
-            item.get("url") for item in (body.get("data") or []) if item.get("url")
-        ]
-        try:
-            refined = request_generation(url, acc["api_secret"], refined_payload, n)
-        except Exception as exc:  # noqa: BLE001 - keep the first image
-            meta["error"] = "refinement call failed: " + str(exc)[:160]
-            return body, meta
-        if refined.status_code != 200 or not isinstance(refined.data, dict):
-            meta["error"] = f"refinement HTTP {refined.status_code}"
-            return body, meta
-        try:
-            review2 = quality.parse_review(
-                _review_chat(
-                    url_chat, acc, conversation_id,
-                    quality.build_review_prompt(prompt),
-                )
+        meta["history"].append(_history_entry(0, current_review))
+        best_body, best_review = body, current_review
+        for attempt in range(1, refines_allowed + 1):
+            if not quality.needs_refinement(current_review, threshold):
+                break
+            correction = quality.build_correction_prompt(
+                prompt, current_review.get("issues")
             )
-        except Exception:  # noqa: BLE001
-            review2 = None
-        meta["refined_review"] = review2
-        meta["attempts"] = 1
-        if review2 and quality.improved(review, review2):
-            meta["refined"] = True
-            meta["score"] = review2.get("overall")
-            meta["verdict"] = review2.get("verdict")
-            meta["refined_urls"] = [
-                item.get("url") for item in (refined.data.get("data") or []) if item.get("url")
-            ]
-            return refined.data, meta
-        meta["refined"] = False
-        return body, meta
-    except Exception as exc:  # noqa: BLE001 - the gate is advisory, never fatal
+            refined_payload = dict(payload)
+            refined_payload["prompt"] = correction
+            refined_payload["conversation_id"] = conversation_id
+            try:
+                refined = request_generation(url, acc["api_secret"], refined_payload, n)
+            except Exception as exc:  # noqa: BLE001 - keep the best image so far
+                meta["error"] = "refinement call failed: " + str(exc)[:160]
+                break
+            if refined.status_code != 200 or not isinstance(refined.data, dict):
+                meta["error"] = f"refinement HTTP {refined.status_code}"
+                break
+            try:
+                refined_review = quality.parse_review(
+                    _review_chat(
+                        url_chat, acc, conversation_id,
+                        quality.build_review_prompt(prompt),
+                    )
+                )
+            except Exception as exc:  # noqa: BLE001
+                refined_review = None
+            meta["history"].append(_history_entry(attempt, refined_review))
+            if refined_review and quality.improved(current_review, refined_review):
+                current = refined.data
+                current_review = refined_review
+                best_body, best_review = refined.data, refined_review
+                meta["refined"] = True
+                meta["refined_urls"] = [
+                    item.get("url")
+                    for item in (refined.data.get("data") or [])
+                    if item.get("url")
+                ]
+            else:
+                break
+        meta["attempts"] = len(meta["history"]) - 1
+        meta["score"] = (best_review or {}).get("overall")
+        meta["verdict"] = (best_review or {}).get("verdict")
+        meta["review"] = best_review
+        meta["refined"] = bool(meta.get("refined"))
+        return best_body, meta
+    except Exception as exc:  # noqa: BLE001 - advisory only
         meta["error"] = str(exc)[:200]
         return body, meta
+
+
+def _history_entry(attempt, review):
+    if not review:
+        return {"attempt": attempt, "error": "review unavailable"}
+    return {
+        "attempt": attempt,
+        "overall": review.get("overall"),
+        "text": review.get("text_score"),
+        "numbers": review.get("numbers_score"),
+        "verdict": review.get("verdict"),
+        "issues": (review.get("issues") or [])[:5],
+    }
 
 
 def _review_chat(url_chat, acc, conversation_id, prompt):

@@ -38,6 +38,7 @@ export function initGenerate() {
       prompt: $("genPrompt").value,
       aspect_ratio: S.ratio,
       quality_preference: $("qualityPreference").value,
+      quality_rounds: Number($("qualityRounds").value || 0),
       n: Number($("genCount").value),
     };
     const fileSignature = S.referenceFiles

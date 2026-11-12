@@ -59,6 +59,8 @@ def queue_image(ctx, body: GenerateBody):
                                 (existing["n"] or 1) != body.n,
                                 (existing["reference_upload_id"] or None)
                                 != (body.upload_id or None),
+                                (existing["quality_rounds"] or 0)
+                                != body.quality_rounds,
                             )
                         ):
                             raise HTTPException(
@@ -93,6 +95,7 @@ def queue_image(ctx, body: GenerateBody):
                             n=body.n,
                             idempotency_key=body.idempotency_key,
                             reference_upload_id=body.upload_id,
+                            quality_rounds=body.quality_rounds,
                             reference_count=int((upload or {}).get("count") or 0)
                             or None,
                             status="queued",
@@ -196,6 +199,7 @@ def serialize_job(ctx, row, agent=False, image_rows=None):
             "conversation_id",
             "quality_score",
             "quality_verdict",
+            "quality_rounds",
             "quality_meta",
             "reference_upload_id",
             "reference_count",

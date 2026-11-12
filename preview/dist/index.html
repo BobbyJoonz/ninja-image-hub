@@ -549,7 +549,23 @@
                         max="60"
                         step="1"
                         required
-                      /><small
+                      />
+                      <label
+                        >Quality gate<select name="quality_gate">
+                          <option value="0">Off — deliver first image</option>
+                          <option value="1">Review only — score + flag</option>
+                          <option value="2">Review + one same-chat fix</option>
+                        </select></label
+                      >
+                      <label
+                        >Quality threshold (1–10)<input
+                          name="quality_threshold"
+                          type="number"
+                          min="1"
+                          max="10"
+                          value="8"
+                      /></label
+                      <small
                         >Upper bound for the adaptive wait; the worker continues
                         as soon as the image has loaded</small
                       ></label
@@ -760,6 +776,21 @@
                     <option value="balanced">Balanced — standard prompt</option>
                     <option value="draft">Draft — standard prompt</option>
                   </select>
+                  <label for="qualityRounds"
+                    >QUALITY LOOP — review &amp; fix rounds</label
+                  ><select id="qualityRounds">
+                    <option value="0" selected>Off — deliver first image</option>
+                    <option value="1">1 round — review + one repair</option>
+                    <option value="2">2 rounds — review + up to 2 repairs</option>
+                    <option value="3">3 rounds — review + up to 3 repairs</option>
+                  </select>
+                  <p class="fine-print">
+                    Quality Loop hands the generated image back to ChatGPT in the
+                    <strong>same chat</strong>, scores text/numbers strictly (a single
+                    wrong digit forces a repair), and regenerates only the text defects.
+                    Each repair is an extra generation and costs quota. Off = use the
+                    global gate setting.
+                  </p>
                   <p class="fine-print">
                     For ChatGPT browser mode, this is not a native
                     High/Medium/Low model setting. The gateway cannot guarantee
