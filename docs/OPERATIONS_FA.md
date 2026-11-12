@@ -610,3 +610,5 @@ python scripts/resolve_unknown.py --password ... --resolution not_delivered \
   کاذب نمی‌سازد.
 - CI اکنون coverage gate (حداقل ۷۹٪)، browser smoke هشت view و `pip-audit` روی
   `requirements.lock` را اجرا می‌کند؛ نصب‌ها hash-pinned هستند.
+
+- برای اجرای ۴۸ ساعته روی سرور: deploy/ninja-soak.service را نصب کن؛ CSV هر سیکل fsync می‌شود و پس از ری‌استارت سرویس، بدون هدر تکراری ادامه می‌دهد. رمز را در /etc/ninja-soak.env بگذار.

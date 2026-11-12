@@ -161,6 +161,75 @@ async function main() {
     console.log(`${view}: visible=${visible} text=${text}`);
   }
 
+  const seeded = process.env.EXPECT_SEEDED === "1";
+  if (seeded) {
+    await evaluate(`document.querySelector('[data-view="jobs"]').click(); true`);
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    const rows = await evaluate(`document.querySelectorAll('#jobsTable tr').length`);
+    if (rows < 2) fail(`seeded jobs table has ${rows} rows`);
+    let resolvedAny = false;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const hasResolve = await evaluate(
+        `Boolean(document.querySelector('[data-action="resolve-job"]'))`,
+      );
+      if (!hasResolve) break;
+      const jobId = await evaluate(
+        `document.querySelector('[data-action="resolve-job"]')?.dataset.id || ""`,
+      );
+      await evaluate(`document.querySelector('[data-action="resolve-job"]').click(); true`);
+      const opened = await waitFor(
+        () => evaluate(`document.getElementById('resolveDialog').open === true`),
+        5000,
+      );
+      if (!opened) {
+        fail("resolve dialog did not open");
+        break;
+      }
+      await evaluate(`(() => {
+        const radio = document.querySelector('input[name="resolution"]');
+        if (!radio) return false;
+        radio.checked = true;
+        document.getElementById('resolveForm').requestSubmit();
+        return true;
+      })()`);
+      const closed = await waitFor(
+        () => evaluate(`document.getElementById('resolveDialog').open === false`),
+        15000,
+      );
+      if (!closed) {
+        fail("resolve dialog did not close after submitting");
+        break;
+      }
+      const gone = await waitFor(
+        () =>
+          evaluate(
+            `!document.querySelector('[data-action="resolve-job"][data-id="${jobId}"]')`,
+          ),
+        15000,
+      );
+      if (!gone) fail(`resolved job ${jobId.slice(0, 8)} still shows Resolve`);
+      resolvedAny = true;
+    }
+    if (!resolvedAny) fail("seeded unknown job has no Resolve action");
+    const stillUnresolved = await evaluate(
+      `Boolean(document.querySelector('[data-action="resolve-job"]'))`,
+    );
+    if (stillUnresolved) fail("resolve action still present after reconciling");
+    await evaluate(`document.querySelector('[data-view="gallery"]').click(); true`);
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    const images = await evaluate(`document.querySelectorAll('#galleryGrid .gallery-item').length`);
+    if (images < 1) fail(`seeded gallery has ${images} images`);
+    await evaluate(`document.querySelector('[data-view="accounts"]').click(); true`);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const cards = await evaluate(`document.querySelectorAll('#accountList .account-card').length`);
+    const connected = await evaluate(
+      `(document.getElementById('accountList')?.innerText || '').includes('connected')`,
+    );
+    if (cards < 1) fail(`seeded account list has ${cards} cards`);
+    if (!connected) fail("seeded account is not shown as connected");
+    console.log(`seeded: rows=${rows} gallery=${images} accounts=${cards}`);
+  }
+
   await evaluate(`document.querySelector('[data-view="studio"]').click(); true`);
   const base64 = fs.readFileSync(REF_FILE).toString("base64");
   await evaluate(`(async () => {

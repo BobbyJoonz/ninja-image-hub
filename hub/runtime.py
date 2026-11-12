@@ -26,7 +26,9 @@ def create_runtime():
 
     (ctx.DATA / "gallery").mkdir(exist_ok=True)
 
-    ctx.VENDOR = ctx.ROOT / "vendor" / "gpt-web-gateway"
+    ctx.VENDOR = Path(
+    os.getenv("GATEWAY_VENDOR_DIR", str(ctx.ROOT / "vendor" / "gpt-web-gateway"))
+)
 
     initialize_database(ctx)
 

@@ -67,7 +67,7 @@ jobs:
         run: >
           python -m pytest -q
           --cov=hub --cov-report=term-missing --cov-report=xml
-          --cov-fail-under=79
+          --cov-fail-under=83
 
   browser:
     runs-on: ubuntu-latest
@@ -93,6 +93,8 @@ jobs:
           DATA_DIR: ${{ runner.temp }}/browser-data
           DATABASE_URL: sqlite:///${{ runner.temp }}/browser-data/hub.db
           GATEWAY_PORT_BASE: "44000"
+          GATEWAY_VENDOR_DIR: ${{ runner.temp }}/browser-fake-vendor
+          DISPLAY: ":test-mock-only"
         run: |
           mkdir -p "$DATA_DIR"
           python -m uvicorn app:app --host 127.0.0.1 --port 8095 --workers 1 \
@@ -102,6 +104,13 @@ jobs:
             sleep 1
           done
           curl -fsS http://127.0.0.1:8095/api/health
+      - name: Seed one completed job, one unknown job and a connected account
+        env:
+          PANEL_URL: http://127.0.0.1:8095
+          PANEL_PASSWORD: browser-smoke-passphrase-123456
+          GATEWAY_VENDOR_DIR: ${{ runner.temp }}/browser-fake-vendor
+        run: |
+          python scripts/seed_demo.py             --panel "$PANEL_URL" --password "$PANEL_PASSWORD"             --vendor "$GATEWAY_VENDOR_DIR"             --out "$RUNNER_TEMP/browser-artifacts/seed.json"
       - name: Browser smoke (8 views, reference picker, zero exceptions)
         env:
           PANEL_URL: http://127.0.0.1:8095
@@ -109,6 +118,7 @@ jobs:
           REF_FILE: tests/fixtures/reference.png
           CHROME_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
           OUT_DIR: ${{ runner.temp }}/browser-artifacts
+          EXPECT_SEEDED: "1"
         run: node tests/browser_smoke.mjs
       - name: Upload browser artifacts
         if: always()

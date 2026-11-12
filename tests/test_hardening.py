@@ -280,6 +280,16 @@ def test_idle_reaper_keeps_busy_account(loaded, monkeypatch):
     assert aid in ctx.processes
 
 
+def test_gateway_vendor_dir_env_override(tmp_path, monkeypatch):
+    monkeypatch.setenv("GATEWAY_VENDOR_DIR", str(tmp_path / "fake-vendor"))
+    module, ctx = build_hub(monkeypatch, tmp_path, runtime_installed=True)
+    assert ctx.VENDOR == tmp_path / "fake-vendor"
+    ctx.engine.dispose()
+    import sys
+
+    sys.modules.pop("app", None)
+
+
 def test_idle_reaper_is_disabled_by_zero(loaded, monkeypatch):
     client, ctx = loaded
     _isolate_scheduler(ctx)

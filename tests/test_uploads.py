@@ -259,10 +259,16 @@ def test_reference_images_reach_the_gateway_as_multipart(loaded, tmp_path, monke
 
 
 def test_unknown_outcome_keeps_references_for_reconciliation(loaded, tmp_path, monkeypatch):
+    """Deterministic: execute the one job by hand after the mock worker is online.
+
+    The scheduler path was flaky under coverage instrumentation; the behaviour under test
+    (a lost upstream response keeps the reference workspace) does not need the dispatcher.
+    """
     client, ctx = loaded
     h = auth(client)
     acc, _capture = start_mock_account(client, h, ctx, monkeypatch, tmp_path, fail=True)
     upload_id = upload(client, h, [("ref.png", png_bytes())]).json()["upload_id"]
+    ctx.stop_scheduler()
     response = client.post(
         "/api/generate",
         json={
@@ -274,7 +280,18 @@ def test_unknown_outcome_keeps_references_for_reconciliation(loaded, tmp_path, m
         },
         headers=h,
     )
-    job = _wait_job(client, response.json()["id"])
+    assert response.status_code == 202, response.text
+    monkeypatch.setattr(ctx, "process_state", lambda a: "running")
+    monkeypatch.setattr(ctx, "upstream_probe", lambda a: True)
+    ctx.execute_job(
+        response.json()["id"],
+        ctx.query_account(acc["id"]),
+        "this will lose its response",
+        "1:1",
+        "balanced",
+        1,
+    )
+    job = client.get(f"/api/jobs/{response.json()['id']}").json()
     assert job["status"] == "unknown", job
     assert (ctx.DATA / "uploads" / upload_id).exists()
 

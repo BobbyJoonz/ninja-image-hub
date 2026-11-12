@@ -1,0 +1,23 @@
+[Unit]
+Description=Ninja Image Hub 48h soak monitor (health/session/queue evidence)
+Documentation=file:///opt/ninja-image-hub/docs/MEASUREMENTS_FA.md
+After=network-online.target ninja-image-hub.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ninja
+Group=ninja
+WorkingDirectory=/opt/ninja-image-hub
+EnvironmentFile=-/opt/ninja-image-hub/.env
+# Put NINJA_ADMIN_PASSWORD= in this root-owned file (mode 0600).
+EnvironmentFile=-/etc/ninja-soak.env
+ExecStart=/opt/ninja-image-hub/.venv/bin/python scripts/soak.py --panel http://127.0.0.1:8081 --hours 48 --interval 900 --out /opt/ninja-image-hub/logs/soak-48h.csv --summary /opt/ninja-image-hub/logs/soak-48h.json
+# A soak survives restarts: the CSV is appended (fsynced each cycle); no header duplication.
+Restart=on-failure
+RestartSec=60
+NoNewPrivileges=true
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

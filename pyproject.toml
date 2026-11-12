@@ -14,6 +14,7 @@ files = [
     "hub/effort.py",
     "hub/gateway.py",
     "hub/limits.py",
+    "hub/worker_setup.py",
 ]
 ignore_missing_imports = true
 follow_imports = "skip"

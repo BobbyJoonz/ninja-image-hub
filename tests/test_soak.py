@@ -124,6 +124,23 @@ def test_cli_records_cycles_and_quota_safe_submission(tmp_path, monkeypatch):
     assert data["cycles"] == 2 and data["submitted_jobs"] == 0
 
 
+def test_cli_resumes_an_existing_csv_without_duplicate_header(tmp_path, monkeypatch):
+    monkeypatch.setattr(soak, "Panel", _FakePanel)
+    out = tmp_path / "soak.csv"
+    args = [
+        "--password", "test-password",
+        "--cycles", "1",
+        "--interval", "0",
+        "--out", str(out),
+    ]
+    assert soak.main(args) == 0
+    assert soak.main(args) == 0
+    lines = out.read_text(encoding="utf-8").splitlines()
+    assert lines[0].startswith("ts_utc,")
+    assert sum(1 for line in lines if line.startswith("ts_utc,")) == 1
+    assert len(list(csv.DictReader(out.open(encoding="utf-8")))) == 2
+
+
 def test_submit_requires_explicit_budget():
     try:
         soak.main(["--password", "x", "--submit", "--cycles", "1", "--out", "unused.csv"])

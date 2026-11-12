@@ -179,7 +179,9 @@ def main(argv=None):
     rows = []
     submitted = 0
     errors = 0
-    first_cycle = True
+    # Resume a soak that was restarted (service reboot, crash) without duplicating the CSV
+    # header. Every row is fsynced, so a partial line is not expected.
+    first_cycle = not out.exists() or out.stat().st_size == 0
     with Panel(args.panel, password) as panel:
         panel.login()
         while True:
@@ -201,6 +203,11 @@ def main(argv=None):
             except Exception as exc:  # noqa: BLE001 - a soak must survive transient errors
                 errors += 1
                 row = unreachable_row(exc, ts)
+                if errors >= 3:
+                    print(
+                        f"[soak] WARNING: panel unreachable {errors} cycles: {str(exc)[:120]}",
+                        file=sys.stderr,
+                    )
             rows.append(row)
             write_rows(out, [row], append=not first_cycle)
             first_cycle = False

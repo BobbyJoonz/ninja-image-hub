@@ -39,7 +39,7 @@ v0.7.0 یک انتشار **سخت‌سازی + بهره‌برداری** است�
 
 ## شواهد اجراشده
 
-- `python -m pytest -q` → **۱۸۹ passed، ۱ skipped** (حدود ۶۰ ثانیه). تست skip مربوط به symlink روی میزبان بدون privilege است.
+- `python -m pytest -q` → **۲۰۲ passed، ۱ skipped** (حدود ۶۰ ثانیه). تست skip مربوط به symlink روی میزبان بدون privilege است.
 - `node --test tests/frontend.test.mjs` → **۵ pass**.
 - `node --check frontend/app.js` و هر ۶ ماژول `frontend/modules/` و `preview/demo.js` → **OK**.
 - E2E زنده روی کد اصلاح‌شده با دروازهٔ جعلیِ سازگار با قرارداد: worker آنلاین و `session: connected`؛ Job با `n=2` → `completed` با **۲ فایل اصلی متمایز**؛ گالری **۲ آیتم**؛ خروجی ZIP با کد **۲۰۰** و امضای **`PK`**؛ kill کردن فرایند worker به‌طور خودکار بازیابی شد و Job بعدی هم `completed` شد. این E2E با دروازهٔ شبیه‌سازی‌شده است، نه ChatGPT Plus واقعی.
@@ -111,7 +111,7 @@ v0.7.0 یک انتشار **سخت‌سازی + بهره‌برداری** است�
 | اندازه‌گیری ظرفیت | `scripts/capacity_report.py` (read-only + probe دومرحله‌ای) | تست percentile/summarize |
 | تنظیمات زنده | چهار تنظیم جدید در `control_settings` + Operations + `/api/settings` | تست اعتبارسنجی/ماندگاری |
 
-**اعداد تست:** `pytest` → **۱۸۹ passed، ۱ skipped**؛ `node --test` → **۶ pass**؛ `doctor.py` و `build_icons.py --check` سبز؛ `preview/dist` byte-identical.
+**اعداد تست:** `pytest` → **۲۰۲ passed، ۱ skipped**؛ `node --test` → **۶ pass**؛ `doctor.py` و `build_icons.py --check` سبز؛ `preview/dist` byte-identical.
 
 **هنوز تأییدنشده (باید با اکانت واقعی سنجیده شود):** نرخ واقعی ۱۰ اکانت و ۵۰۰ تصویر/۵ ساعت. ابزار اندازه‌گیری آماده است (`scripts/capacity_report.py`)، اما هیچ عدد واقعی provider تا اجرای آن روی سرور در این گزارش ثبت نمی‌شود.
 
@@ -129,7 +129,7 @@ v0.7.0 یک انتشار **سخت‌سازی + بهره‌برداری** است�
 | پایش | `effort_below_requested_24h` در `/api/health` + هشدار `watch.py` | تست هشدار |
 | تنظیم زنده | `thinking_effort` enum در Operations + `THINKING_EFFORT` | تست 422 برای مقدار نامعتبر و ماندگاری |
 
-**اعداد تست:** `pytest` → **۱۸۹ passed، ۱ skipped**؛ `node --test` → **۶ pass**.
+**اعداد تست:** `pytest` → **۲۰۲ passed، ۱ skipped**؛ `node --test` → **۶ pass**.
 
 **تأیید با اجرای واقعی (۶ نوامبر ۲۰۲۶):** یک Job واقعی روی اکانت متصل ( single small blue dot..., n=1) در **۸۱ ثانیه** completed شد و Gateway گزارش داد 	hinking_requested=high, 	hinking_applied=high, 	hinking_verified=1, بدون fallback؛ badge در Jobs «High ✓» بود و effort_below_requested_24h=0 ماند. Job آزمایشی بعد از ثبت شاهد پاک شد. شرط باقی‌مانده: اگر اکانت/پلن سطح High را از دست بدهد، هشدار ۲۴ ساعته (watch) و badge «High → ...» آن را نشان می‌دهد.
 
@@ -146,7 +146,7 @@ v0.7.0 یک انتشار **سخت‌سازی + بهره‌برداری** است�
 | UI | drag/drop، chips، اعتبارسنجی سمت مرورگر، upload قبل از queue | تست UI contract + اسکرین‌شات واقعی |
 | امنیت/دیسک | آپلود فقط admin+CSRF یا Bearer؛ رد 507 در دیسک کم؛ بکاپ شامل نمی‌شود | تست limits + backup exclusion |
 
-**اعداد تست:** `pytest` → **۱۸۹ passed، ۱ skipped**؛ `node --test` → **۶ pass**.
+**اعداد تست:** `pytest` → **۲۰۲ passed، ۱ skipped**؛ `node --test` → **۶ pass**.
 
 **اثبات زنده (۷ نوامبر ۲۰۲۶):** دو تصویر مرجع (۵٬۶۹۳ بایت) آپلود شد و یک Job واقعی در **۶۳ ثانیه**
 `completed` شد؛ `reference_count=2`، `thinking=high/verified=1`، خروجی در گالری ثبت و سپس پاک شد.
@@ -170,7 +170,7 @@ v0.7.0 یک انتشار **سخت‌سازی + بهره‌برداری** است�
 8. `meta.json` دست‌کاری‌شده می‌توانست path traversal بدهد → اعتبارسنجی نام فایل.
 9. UI فایل‌های هم‌مشخصات را تکراری می‌دید / فوکوس drop zone نامرئی بود → اصلاح.
 
-**تست:** ۹ تست جدید → **۱۸۹ passed، ۱ skipped**؛ ۶ Node test. اثبات زندهٔ v0.9.0 (۲ مرجع، ۶۳ ثانیه، High verified) پس از این refactor دوباره با یک Job واقعی تکرار شد.
+**تست:** ۹ تست جدید → **۲۰۲ passed، ۱ skipped**؛ ۶ Node test. اثبات زندهٔ v0.9.0 (۲ مرجع، ۶۳ ثانیه، High verified) پس از این refactor دوباره با یک Job واقعی تکرار شد.
 
 
 ## v0.10.0 — بهینه‌سازی جریان تصاویر مرجع
@@ -188,7 +188,7 @@ ChatGPT اجازهٔ `fill()` نمی‌دهد و Gateway پرامپت را کا�
 1. پچ idempotent و fail-open در `hub/workers.py`: مسیر تایپ را با `keyboard.insertText`
    جایگزین می‌کند؛ اگر متن ننشیند، verification خود Gateway به تایپ کاراکتری برمی‌گردد.
 2. Thumbnailهای ۹۶px در UI برای مراجع، به‌جای decode کامل ۱۰ تصویر ۱۶MP (JS heap ~۱MiB).
-3. تست‌ها: patch idempotent/fail-open + قرارداد UI thumbnail. مجموع → **۱۸۹ passed، ۱ skipped**.
+3. تست‌ها: patch idempotent/fail-open + قرارداد UI thumbnail. مجموع → **۲۰۲ passed، ۱ skipped**.
 
 **تست‌های واقعی همین دور:** batch n=2 با مرجع (۲ تصویر، refs=1، High verified)، پرامپت
 ۳٬۱۲۶ کاراکتری با مرجع (قبل/بعد پچ)، و بررسی مرورگر با ۱۰ مرجع ۴MiB (همه thumbnail ۹۶px).
@@ -225,7 +225,7 @@ pre-submit و ثبت `failed` به‌جای `unknown` (تا اپراتور بت�
 | resolve آزادکنندهٔ مرجع | تست: upload پس از resolve حذف می‌شود |
 | `resolve_unknown.py` | فیلتر متن/سن/ids؛ dry-run پیش‌فرض؛ ۴ تست (۳ pure + یک resolve release) |
 | doctor | چک marker در workspaceها + تطبیق RENDER_WAIT_SEC؛ در اجرای واقعی PASS (۲ workspace) |
-| جداسازی تست | `GATEWAY_PORT_BASE` + conftest؛ کل تست‌ها با worker زنده: **۱۸۹ passed، ۱ skipped** |
+| جداسازی تست | `GATEWAY_PORT_BASE` + conftest؛ کل تست‌ها با worker زنده: **۲۰۲ passed، ۱ skipped** |
 | تمرین بکاپ/ریستور | ۲۸ فایل، ۵۰.۹۹MB، integrity ok، ۴۰ Job، ۲۴ گالری |
 | دوام صف | Job در صف + upload پس از ری‌استارت پنل باقی ماند |
 
@@ -249,7 +249,7 @@ pre-submit و ثبت `failed` به‌جای `unknown` (تا اپراتور بت�
 | رندر | همهٔ viewها هر ۷.۵s | فقط view فعال + fingerprint برای accounts/jobs/settings/analytics/operations |
 | CI | نداشت | `.github/workflows/ci.yml` (static + full best-effort) |
 
-**اعتبارسنجی:** ۱۸۹ passed، ۱ skipped · node ۶/۶ · browser smoke همهٔ ۸ view بدون exception ·
+**اعتبارسنجی:** ۲۰۲ passed، ۱ skipped · node ۶/۶ · browser smoke همهٔ ۸ view بدون exception ·
 doctor PASS برای ۲ workspace و render cap · preview byte-identical · seal از clone.
 
 **باقی‌ماندهٔ صادقانه:** `workers.py` هنوز lifecycle را دارد (۷۸۴ خط)؛ `gateway_patches.py`
@@ -273,7 +273,7 @@ CI روی GitHub runner هنوز اجرا نشده (فقط YAML و دستوره�
 | رندر | همهٔ viewها هر ۷.۵s | فقط view فعال + fingerprint برای accounts/jobs/settings/analytics/operations |
 | CI | نداشت | `.github/workflows/ci.yml` (static + full best-effort) |
 
-**اعتبارسنجی:** ۱۸۹ passed، ۱ skipped · node ۶/۶ · browser smoke همهٔ ۸ view بدون exception ·
+**اعتبارسنجی:** ۲۰۲ passed، ۱ skipped · node ۶/۶ · browser smoke همهٔ ۸ view بدون exception ·
 doctor PASS برای ۲ workspace و render cap · preview byte-identical · seal از clone.
 
 **باقی‌ماندهٔ صادقانه:** `workers.py` هنوز lifecycle را دارد (۷۸۴ خط)؛ `gateway_patches.py`
@@ -300,7 +300,7 @@ uff check محلی: All checks passed.
 | type checking | هیچ | **mypy strict** برای `gateway_errors.py`, `version.py`, `effort.py` (۰ خطا) |
 | CI full suite | continue-on-error | **required** (بدون continue-on-error) |
 
-**اعتبارسنجی:** ۱۸۹ passed، ۱ skipped · node ۶/۶ · ruff همه پاس · mypy strict ۳ فایل پاس ·
+**اعتبارسنجی:** ۲۰۲ passed، ۱ skipped · node ۶/۶ · ruff همه پاس · mypy strict ۳ فایل پاس ·
 browser smoke همهٔ ۸ view بدون exception · preview byte-identical · seal از clone.
 
 **ریسک باقی‌مانده:** `worker_process.py` ۵۶۷ خط و `accounts.js` ۵۸۵ خط هنوز بزرگ‌اند؛
@@ -323,7 +323,7 @@ type-check فقط ماژول‌های pure را پوشش می‌دهد (ctx دا
 `limits.py` باعث یک `return` زودهنگام در مسیر JSON شد و ۹۹ تست را شکست (middleware هیچ
 پاسخی نمی‌داد). اصلاح شد؛ این نشان می‌دهد تست‌ها واقعاً مسیر ASGI را پوشش می‌دهند.
 
-**اعتبارسنجی:** ۱۸۹ passed، ۱ skipped · node ۶/۶ · ruff پاس · mypy strict ۵ فایل پاس ·
+**اعتبارسنجی:** ۲۰۲ passed، ۱ skipped · node ۶/۶ · ruff پاس · mypy strict ۵ فایل پاس ·
 browser smoke ۸ view بدون exception · preview byte-identical · seal از clone.
 
 
@@ -337,10 +337,28 @@ browser smoke ۸ view بدون exception · preview byte-identical · seal از 
 | **Browser e2e** | `tests/browser_smoke.mjs` + job `browser` در CI: ۸ view، صفر exception، chip مرجع، اسکرین‌شات artifact؛ روی پنل تازه لوکال سبز |
 | **قفل وابستگی** | `requirements.lock` / `requirements-dev.lock` با hash و universal markers (uv)؛ نصب در venv تازه تست شد؛ `pip-audit` **بدون CVE** |
 | **رفع امنیتی** | Pillow 12.3 دارای ۱۳ CVE بود؛ به 13.0.0 ارتقا و lock بازسازی شد |
-| **تست‌ها** | **۱۸۹ passed، ۱ skipped** (از ۱۶۳)؛ ۲۱ تست جدید برای soak/worker/login |
+| **تست‌ها** | **۲۰۲ passed، ۱ skipped** (از ۱۶۳)؛ ۲۱ تست جدید برای soak/worker/login |
 
 **CI جدید:** static (ruff/mypy/compile/JS/node/icons/seal/audit/subset) + full (coverage gate) +
 browser (Chrome action + panel تازه). همه required.
 
 **ریسک‌های باقی‌مانده:** ۱۰ اکانت و ۴۸h واقعی هنوز اجرا نشده؛ login/worker_process پایین‌ترین
 پوشش را دارند؛ نصب lock روی Linux در CI باید برای اولین بار تأیید شود (این نسخه).
+
+## v0.17.0 — ضدضربه‌سازی soak/e2e/coverage/types
+
+| مورد | قبل | بعد |
+|---|---|---|
+| **Soak** | اسکریپت ساده | resume-safe CSV (هدر تکراری نمی‌شود)، هشدار عدم‌دسترسی، سرویس `deploy/ninja-soak.service`، ۸ تست؛ ۴۸h واقعی هنوز اجرا نشده |
+| **Coverage** | ۸۲.۰۷٪ / ۱۸۹ تست | **۸۴.۳۴٪ / ۲۰۲ تست**؛ گیت CI **۸۳٪** (روی clone تست vendor skip می‌شود) |
+| **Flaky** | یک بار flake در unknown | تست unknown به مسیر اجرای مستقیم و deterministic بازنویسی شد |
+| **Browser e2e** | فقط empty state | `scripts/seed_demo.py` + fake gateway واقعی: اکانت connected، ۱ Job موفق، گالری ۱ تصویر، ۱ Job unknown و **resolve واقعی از UI**؛ در CI اجرا می‌شود |
+| **Types** | ۵ فایل | **۶ فایل** (`worker_setup.py` با Protocol و strict)؛ execution/accounts هنوز untyped |
+| **Dedup** | fake gateway در tests | یک builder مشترک `scripts/fake_gateway.py` برای tests و seed |
+
+**اعتبارسنجی:** ۲۰۲ passed، ۱ skipped · coverage 84.34٪ · mypy strict ۶ فایل · browser seeded
+روی پنل تازه (۸ view، resolve، gallery، zero exception) · ruff/node/compileall · Pillow 13 ·
+`pip-audit` پاک · seal 189 فایل (پس از commit).
+
+**هنوز انجام نشده (بدون تعارف):** اجرای ۴۸ ساعته، اندازه‌گیری ۱۰ اکانت واقعی، type کردن
+execution/worker_process/accounts، و اطمینان از سبز بودن اولین اجرای CI با lock/browser seed.

@@ -7,11 +7,25 @@ unit-tested) without reading the process/supervision logic.
 import os
 import shutil
 import sys
+from collections.abc import Callable, Mapping
+from pathlib import Path
+from typing import Any, Protocol
 
 from .gateway_patches import apply_worker_patches
 
 
-def runtime_installed(ctx):
+class SetupContext(Protocol):
+    """The ctx surface these setup helpers need (kept explicit instead of untyped)."""
+
+    DATA: Path
+    VENDOR: Path
+
+    def setting(self, key: str) -> Any: ...
+
+    def runtime_installed(self) -> bool: ...
+
+
+def runtime_installed(ctx: SetupContext) -> bool:
     return (
         (ctx.VENDOR / "src" / "server.js").exists()
         and (ctx.VENDOR / "node_modules").is_dir()
@@ -19,12 +33,12 @@ def runtime_installed(ctx):
     )
 
 
-def ensure_worker_copy(ctx, acc):
+def ensure_worker_copy(ctx: SetupContext, acc: Mapping[str, Any]) -> Path:
     if not ctx.runtime_installed():
         raise RuntimeError(
             "Gateway runtime is not installed. Run python scripts/prepare_gateway.py."
         )
-    worker = ctx.DATA / "accounts" / acc["id"] / "gateway"
+    worker = ctx.DATA / "accounts" / str(acc["id"]) / "gateway"
     worker.mkdir(parents=True, exist_ok=True)
     if not (worker / "src" / "server.js").exists():
         shutil.copytree(ctx.VENDOR / "src", worker / "src", dirs_exist_ok=True)
@@ -96,7 +110,7 @@ WORKER_ENV_ALLOWLIST = frozenset(
 )
 
 
-def _read_auto_login(ctx, account_id):
+def _read_auto_login(ctx: SetupContext, account_id: str) -> dict[str, Any] | None:
     """Per-account credentials for the gateway's own re-login, if the operator stored them."""
     import json
 
@@ -112,7 +126,7 @@ def _read_auto_login(ctx, account_id):
     return data
 
 
-def worker_env(ctx, acc):
+def worker_env(ctx: SetupContext, acc: Mapping[str, Any]) -> dict[str, str]:
     """Environment for the third-party gateway process.
 
     Only an explicit allowlist of OS variables is inherited: APP_SECRET, ADMIN_PASSWORD,
@@ -145,7 +159,11 @@ def worker_env(ctx, acc):
     return env
 
 
-def display_mode(platform_name=None, which=None, env=None):
+def display_mode(
+    platform_name: str | None = None,
+    which: Callable[[str], str | None] | None = None,
+    env: Mapping[str, str] | None = None,
+) -> str:
     """How a headed browser gets a screen: desktop, X11, per-worker Xvfb, or nothing.
 
     The gateway deliberately runs non-headless (headless is an anti-bot signal), so a
@@ -164,12 +182,16 @@ def display_mode(platform_name=None, which=None, env=None):
     return "missing"
 
 
-def display_state(ctx):
+def display_state(ctx: SetupContext) -> str:
     """ctx-bound wrapper for the dashboard (how a headed browser gets a screen)."""
     return display_mode()
 
 
-def worker_command(platform_name=None, which=None, env=None):
+def worker_command(
+    platform_name: str | None = None,
+    which: Callable[[str], str | None] | None = None,
+    env: Mapping[str, str] | None = None,
+) -> list[str]:
     """Command that launches the gateway. Xvfb is wrapped per worker, never per host."""
     cmd = ["node", "src/server.js"]
     if display_mode(platform_name, which, env) == "xvfb":

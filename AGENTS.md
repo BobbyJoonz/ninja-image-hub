@@ -185,7 +185,7 @@ The docs above are the current description. Older versioned documents were remov
 ## Required checks
 
 ```bash
-python -m pytest -q          # 189 passed, 1 skipped (skip = symlink test on unprivileged Windows)
+python -m pytest -q          # 202 passed, 1 skipped (skip = symlink test on unprivileged Windows)
 node --test tests/frontend.test.mjs
 node --check frontend/app.js # plus all frontend modules and preview/demo.js
 python scripts/doctor.py     # exit 0 = ready

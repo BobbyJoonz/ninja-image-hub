@@ -10,7 +10,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Node.js](https://img.shields.io/badge/node-22%2B-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![SQLite](https://img.shields.io/badge/SQLite-WAL-003B57?logo=sqlite&logoColor=white)](https://www.sqlite.org/wal.html)
-[![Tests](https://img.shields.io/badge/tests-189%20passed%20%C2%B7%201%20skipped-2ea043)](#verification)
+[![Tests](https://img.shields.io/badge/tests-202%20passed%20%C2%B7%201%20skipped-2ea043)](#verification)
 [![Accounts](https://img.shields.io/badge/accounts-1%20to%2016-8957e5)](#multi-account-model)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-linux%20%7C%20windows-6e7681)](#quick-start)
@@ -596,7 +596,7 @@ Guardrails:
 ## Verification
 
 ```bash
-python -m pytest -q --cov=hub --cov-fail-under=79   # 189 passed, 1 skipped, coverage gate
+python -m pytest -q --cov=hub --cov-fail-under=83   # 202 passed, 1 skipped, coverage gate
 node --test tests/frontend.test.mjs                 # 6 passed
 node --check frontend/app.js                        # + all modules + preview/demo.js
 node tests/browser_smoke.mjs                        # headless: 8 views, 0 exceptions, artifacts
