@@ -149,7 +149,9 @@ The docs above are the current description. Older versioned documents were remov
 - The version comes from `hub/version.py` (which reads `package.json`); never add a second
   version literal.
 - Operator scripts share `scripts/_panel.py` for login/CSRF/JSON. Never duplicate that
-  handshake in a new script.
+  handshake in a new script. Capacity claims come only from `scripts/capacity_report.py`
+  runs recorded in `docs/MEASUREMENTS_FA.md`; soak/session evidence comes from
+  `scripts/soak.py`. Never describe arithmetic from software limits as measured capacity.
 - Styles are `frontend/styles/base.css` + `features.css` (the UI links both); `style.css`
   remains an aggregating `@import` entry point for compatibility. Tests read `all_css()`.
 - `frontend/app.js` is only the entrypoint: bootstrap/login/nav/account wiring lives in
@@ -159,7 +161,9 @@ The docs above are the current description. Older versioned documents were remov
   app.js, accounts.js or views.js back into god files.
 - `.github/workflows/ci.yml` runs static checks (ruff real errors, strict mypy for the pure
   modules in `pyproject.toml`, compile, JS syntax, node tests, icons, seal, offline test
-  subset) and the full suite as a required job; keep both green.
+  subset), the full suite with a coverage gate, a pip-audit of the runtime lock, and a
+  headless browser smoke (8 views, zero exceptions, screenshot artifact) — all required.
+  Reproducible installs use hash-pinned `requirements.lock` / `requirements-dev.lock`.
 
 ## Frontend and preview
 
@@ -181,7 +185,7 @@ The docs above are the current description. Older versioned documents were remov
 ## Required checks
 
 ```bash
-python -m pytest -q          # 163 passed, 1 skipped (skip = symlink test on unprivileged Windows)
+python -m pytest -q          # 189 passed, 1 skipped (skip = symlink test on unprivileged Windows)
 node --test tests/frontend.test.mjs
 node --check frontend/app.js # plus all frontend modules and preview/demo.js
 python scripts/doctor.py     # exit 0 = ready

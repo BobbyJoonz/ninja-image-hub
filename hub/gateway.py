@@ -71,7 +71,9 @@ def request_chat(
     timeout: float = 180.0,
 ) -> SimpleNamespace:
     """POST a text/review turn to the gateway (same conversation when conversation_id is set)."""
-    with httpx.Client(trust_env=False, timeout=httpx.Timeout(read=timeout, connect=10)) as client:
+    with httpx.Client(
+        trust_env=False, timeout=httpx.Timeout(read=timeout, connect=10, write=120, pool=10)
+    ) as client:
         response = client.post(
             url, headers={"Authorization": "Bearer " + secret}, json=payload
         )

@@ -597,3 +597,16 @@ python scripts/resolve_unknown.py --password ... --resolution not_delivered \
 **معیار سخت‌گیرانه:** هر حرف/رقم اشتباه (مثل ۱۵ که ۵۱ نوشته شود) حتی با نمرهٔ کلی بالا هم «نیاز به اصلاح» است؛ نمرهٔ کلی از ضعیف‌ترین نمرهٔ متنی/عددی بالاتر نمی‌رود. RTL و نیم‌فاصله هم چک می‌شود.
 
 **هزینه و محافظ‌ها:** هر round = یک تولید اضافه (سهمیه/زمان)؛ فقط وقتی ایراد متنی/عددی هست تولید می‌شود؛ حداکثر ۳ چرخه؛ خطای بازبینی/اصلاح Job را fail نمی‌کند و نسخهٔ قبلی حفظ می‌شود. URL نسخهٔ اول و تاریخچهٔ نمره‌ها در `quality_meta` می‌ماند. اگر `Off` بگذاری، تنظیم سراسری `Quality gate` (0/1/2) و `Quality threshold` اعمال می‌شود.
+
+## سنجش واقعی و Soak — v0.16
+
+- `scripts/capacity_report.py --submit --yes --accounts 10 --out docs/measurements/...json`
+  تنها راه ادعای ظرفیت است؛ خروجی JSON ثبت می‌شود و method/plan/quota در
+  `docs/MEASUREMENTS_FA.md` مستند شده است.
+- `scripts/soak.py --hours 48 --interval 900 --out logs/soak.csv` هر ۱۵ دقیقه health،
+  session، queue و disk را ثبت می‌کند؛ `--submit --yes --jobs N` سقف واقعی Job را
+  محدود می‌کند. پیش‌فرض بدون Job است تا سهمیه مصرف نشود.
+- `login_issue` فقط برای worker آنلاینِ غیر-connected ثبت می‌شود؛ اکانت stopped هشدار
+  کاذب نمی‌سازد.
+- CI اکنون coverage gate (حداقل ۷۹٪)، browser smoke هشت view و `pip-audit` روی
+  `requirements.lock` را اجرا می‌کند؛ نصب‌ها hash-pinned هستند.

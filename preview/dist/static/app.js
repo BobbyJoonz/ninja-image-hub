@@ -10,4 +10,5 @@ initGenerate();
 initGallery();
 initJobsToolbar();
 initOperations();
+document.documentElement.dataset.appReady = "1";
 boot();

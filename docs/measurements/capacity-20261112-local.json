@@ -1,0 +1,58 @@
+{
+  "snapshot": {
+    "panel": "http://127.0.0.1:8081",
+    "version": "0.15.0",
+    "workers_policy": "on-demand",
+    "accounts": [
+      {
+        "name": "Main",
+        "runtime": "online",
+        "session": "connected",
+        "memory_mb": 1534.7
+      },
+      {
+        "name": "\u06cc\u06cc\u06cc\u06cc",
+        "runtime": "stopped",
+        "session": "unknown",
+        "memory_mb": null
+      }
+    ],
+    "health": {
+      "ok": true,
+      "version": "0.15.0",
+      "gateway_installed": true,
+      "accounts": 2,
+      "running_workers": 1,
+      "idle_workers": 0,
+      "worker_policy": "on-demand",
+      "dispatch_paused": false,
+      "disk_free_mb": 6530,
+      "disk_low": false,
+      "accounts_free_plan": 1,
+      "accounts_plan_expiring": 0,
+      "unresolved_unknown": 17,
+      "effort_below_requested_24h": 0,
+      "effort_mixed_24h": 0,
+      "queued": 0,
+      "running": 1,
+      "completed": 85,
+      "partial": 0,
+      "failed": 9,
+      "unknown": 17,
+      "rate_limited": 0
+    },
+    "queue": {
+      "queued": 0,
+      "running": 1,
+      "capacity": 4,
+      "tab_limit": 3
+    },
+    "limits": {
+      "max_running_accounts": 2,
+      "global_max_inflight": 4,
+      "max_batch_images": 4,
+      "idle_worker_shutdown_minutes": 20
+    }
+  },
+  "submitted": false
+}

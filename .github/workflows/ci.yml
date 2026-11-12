@@ -15,19 +15,21 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Install Python deps + ruff
+      - name: Install Python deps + ruff + mypy
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt pytest ruff mypy
+          pip install --require-hashes -r requirements-dev.lock
       - name: Ruff (real errors only)
         run: ruff check --no-cache --select E9,F63,F7,F82 hub scripts tests
+      - name: Dependency audit
+        run: pip-audit -r requirements.lock
       - name: Strict types (pure modules)
         run: python -m mypy
       - name: Compile Python
         run: python -m compileall -q hub scripts
       - name: JavaScript syntax
         run: |
-          for f in frontend/app.js frontend/modules/*.js preview/demo.js; do node --check "$f"; done
+          for f in frontend/app.js frontend/modules/*.js preview/demo.js tests/browser_smoke.mjs; do node --check "$f"; done
       - name: Node tests
         run: node --test tests/frontend.test.mjs
       - name: Icon sprite
@@ -54,12 +56,66 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Install deps + xvfb
+      - name: Install deps + xvfb + coverage
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt pytest
+          pip install --require-hashes -r requirements-dev.lock
           sudo apt-get update && sudo apt-get install -y xvfb
-      - name: Full pytest
+      - name: Full pytest with coverage gate
         env:
           GATEWAY_PORT_BASE: "43000"
-        run: python -m pytest -q
+        run: >
+          python -m pytest -q
+          --cov=hub --cov-report=term-missing --cov-report=xml
+          --cov-fail-under=79
+
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: browser-actions/setup-chrome@v1
+        id: setup-chrome
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install --require-hashes -r requirements.lock
+      - name: Start a fresh panel
+        env:
+          ADMIN_PASSWORD: browser-smoke-passphrase-123456
+          APP_SECRET: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          AGENT_API_KEY: browser-smoke-agent-key-12345
+          DATA_DIR: ${{ runner.temp }}/browser-data
+          DATABASE_URL: sqlite:///${{ runner.temp }}/browser-data/hub.db
+          GATEWAY_PORT_BASE: "44000"
+        run: |
+          mkdir -p "$DATA_DIR"
+          python -m uvicorn app:app --host 127.0.0.1 --port 8095 --workers 1 \
+            > "$RUNNER_TEMP/panel.log" 2>&1 &
+          for i in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:8095/api/health >/dev/null; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8095/api/health
+      - name: Browser smoke (8 views, reference picker, zero exceptions)
+        env:
+          PANEL_URL: http://127.0.0.1:8095
+          PANEL_PASSWORD: browser-smoke-passphrase-123456
+          REF_FILE: tests/fixtures/reference.png
+          CHROME_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
+          OUT_DIR: ${{ runner.temp }}/browser-artifacts
+        run: node tests/browser_smoke.mjs
+      - name: Upload browser artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-smoke
+          path: |
+            ${{ runner.temp }}/browser-artifacts
+            ${{ runner.temp }}/panel.log
+          if-no-files-found: ignore

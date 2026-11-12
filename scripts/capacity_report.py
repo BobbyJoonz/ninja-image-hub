@@ -68,6 +68,7 @@ def main():
     parser.add_argument("--timeout", type=int, default=1800)
     parser.add_argument("--interval", type=float, default=3)
     parser.add_argument("--json", action="store_true")
+    parser.add_argument("--out", default="", help="write the JSON snapshot/report to this file")
     args = parser.parse_args()
 
     if not args.password:
@@ -132,8 +133,12 @@ def main():
         print(f"unresolved : {health.get('unresolved_unknown')} unknown job(s)")
 
     if not args.submit:
+        payload = {"snapshot": snapshot, "submitted": False}
+        if args.out:
+            Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+            Path(args.out).write_text(json.dumps(payload, indent=2), encoding="utf-8")
         if args.json:
-            print(json.dumps({"snapshot": snapshot, "submitted": False}, indent=2))
+            print(json.dumps(payload, indent=2))
         else:
             print("\nread-only mode. Add --submit --yes for a live probe (consumes provider quota).")
         return 0
@@ -199,6 +204,9 @@ def main():
         "unresolved_unknown": health_after.get("unresolved_unknown"),
         "worker_ram_mb": ram,
     }
+    if args.out:
+        Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.out).write_text(json.dumps(report, indent=2), encoding="utf-8")
     if args.json:
         print(json.dumps(report, indent=2))
         return 0

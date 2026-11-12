@@ -10,7 +10,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Node.js](https://img.shields.io/badge/node-22%2B-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![SQLite](https://img.shields.io/badge/SQLite-WAL-003B57?logo=sqlite&logoColor=white)](https://www.sqlite.org/wal.html)
-[![Tests](https://img.shields.io/badge/tests-163%20passed%20%C2%B7%201%20skipped-2ea043)](#verification)
+[![Tests](https://img.shields.io/badge/tests-189%20passed%20%C2%B7%201%20skipped-2ea043)](#verification)
 [![Accounts](https://img.shields.io/badge/accounts-1%20to%2016-8957e5)](#multi-account-model)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-linux%20%7C%20windows-6e7681)](#quick-start)
@@ -273,7 +273,7 @@ flowchart TD
 | Paused dispatch | `dispatch_paused` stops **new** dispatch only; running jobs finish, queued jobs are kept |
 | Cap changes | lowering `max_pending_jobs` never deletes or starves existing queued work |
 
-### The 10-account recipe (validated target)
+### The 10-account recipe (design target — **not yet measured**)
 
 A live worker costs **≈ 0.8–1.3 GB RAM** (Node + Chrome). Idle workers stop after `idle_worker_shutdown_minutes`, so the fleet only pays for browsers that are actually working.
 
@@ -288,7 +288,9 @@ A live worker costs **≈ 0.8–1.3 GB RAM** (Node + Chrome). Idle workers stop 
 | `provider_cooldown_minutes` | `30` | account-level penalty after a rate limit |
 | Server | **16 GB RAM, 8+ cores** | 10 × 1.0–1.3 GB + panel |
 
-**Expected throughput.** The gateway paces upstream turns itself (`MIN_JOB_GAP_SEC=60`, `MIN_TURN_STAGGER_SEC=10`), so a single account tops out at roughly one job per minute. Ten healthy accounts therefore reach the order of **~10 jobs/min**; with `n=4` images per job that is ~40 images/min *if the provider cooperates*. Software limits never imply provider quota — the Hub cannot create capacity that ChatGPT does not offer.
+**Expected throughput (arithmetic from software limits, not provider measurement).**
+These numbers are *not* a capacity claim: see [docs/MEASUREMENTS_FA.md](docs/MEASUREMENTS_FA.md)
+for the measurement method and the honest current status. The gateway paces upstream turns itself (`MIN_JOB_GAP_SEC=60`, `MIN_TURN_STAGGER_SEC=10`), so a single account tops out at roughly one job per minute. Ten healthy accounts therefore reach the order of **~10 jobs/min**; with `n=4` images per job that is ~40 images/min *if the provider cooperates*. Software limits never imply provider quota — the Hub cannot create capacity that ChatGPT does not offer.
 
 ### What happens at the edges
 
@@ -443,7 +445,8 @@ All of these are **live** unless marked *restart*. Every change requires admin s
 | `python scripts/backup.py` | `create`, `verify`, `restore` | WAL-safe SQLite snapshot + originals + per-account sessions + `.env`; `verify` re-hashes every file; `restore` requires an empty target or `--force` |
 | `python scripts/watch.py` | `--once`, `--interval`, `--webhook` | Alerts on unresolved unknown jobs, low disk, queue stalls and an unreachable panel; de-duplicated via a state file; JSON webhook payload |
 | `python scripts/resolve_unknown.py` | `--match`, `--older-than-hours`, `--resolution`, `--yes` | Lists unresolved `unknown` jobs and records an operator verdict through the one-shot resolve endpoint; read-only unless `--yes`; never re-submits upstream; resolving releases the job's reference workspace |
-| `python scripts/capacity_report.py` | `--submit --yes`, `--accounts` | Read-only capacity snapshot by default; with `--submit` measures real wall time, queue wait, generation p50/p95 and sustained images/hour against a real panel |
+| `python scripts/capacity_report.py` | `--submit --yes`, `--accounts`, `--out` | Read-only capacity snapshot by default; with `--submit` measures real wall time, queue wait, generation p50/p95 and sustained images/hour against a real panel; `--out` saves the JSON evidence |
+| `python scripts/soak.py` | `--hours`, `--interval`, `--submit --yes --jobs` | 48h monitor: health/session/queue CSV every interval; optional quota-capped real probe jobs; never auto-retries |
 | `python scripts/serve_preview.py` | `--host`, `--port` | Serves `preview/dist` with correct MIME types (the sample-data preview) |
 | `python scripts/audit_gallery.py` | — | **Read-only** report of missing/unindexed files; never deletes anything |
 | `python scripts/seal_manifest.py` | `--check` | Regenerates or verifies `MANIFEST_SHA256.json`; text is hashed after CRLF→LF normalisation so a Linux clone and a Windows checkout agree |
@@ -593,11 +596,18 @@ Guardrails:
 ## Verification
 
 ```bash
-python -m pytest -q                     # 163 passed, 1 skipped  (~96 s)
-node --test tests/frontend.test.mjs     # 6 passed
-node --check frontend/app.js            # + all modules + preview/demo.js
-python scripts/doctor.py                # exit 0 = ready
+python -m pytest -q --cov=hub --cov-fail-under=79   # 189 passed, 1 skipped, coverage gate
+node --test tests/frontend.test.mjs                 # 6 passed
+node --check frontend/app.js                        # + all modules + preview/demo.js
+node tests/browser_smoke.mjs                        # headless: 8 views, 0 exceptions, artifacts
+pip-audit -r requirements.lock                      # no known vulnerabilities
+python scripts/doctor.py                            # exit 0 = ready
 ```
+
+CI runs static checks, the full suite with a **coverage gate**, a dependency audit, and a
+headless browser smoke against a fresh panel (screenshot artifact). Reproducible installs use
+the hash-pinned `requirements.lock` / `requirements-dev.lock`; `requirements.txt` stays the
+human-readable range file for operators.
 
 Covered by the suite: account lifecycle, CSRF/Bearer auth, legacy SQL migration, fairness and caps, a 500-job queue, multi-image responses, partial/unknown outcomes, cooldown without rotation, byte-identical originals, Range requests, paginated gallery, ZIP export, redirect/symlink/SSRF rejection, size budgets and rollback cleanup, plus hardening regressions (JS MIME, worker env, SQLite WAL, requeue, supervisor, RAM guard, Xvfb command, deploy assets, on-demand wake/reap), and Phase 4 operations: unknown reconciliation (one-shot, audit without note, health counter), retention that provably never touches originals/sessions/db, live-worker log protection, disk-low dispatch stop, backup create/verify/restore round-trip, alert evaluation and capacity math.
 
@@ -622,6 +632,7 @@ Credentials from the iframe form are stored only in `data/accounts/<id>/auto-log
 | [docs/FIRST_RUN_FA.md](docs/FIRST_RUN_FA.md) | Deep first-run: doctor, gateway, login, first image, backup |
 | [docs/QUALITY_LOOP_FA.md](docs/QUALITY_LOOP_FA.md) | Quality Loop: per-job review/repair rounds, strict text/number rubric, master prompt + `{request}` customization, API |
 | [docs/OPERATIONS_FA.md](docs/OPERATIONS_FA.md) | Capacity, failure modes, monitoring, on-demand workers |
+| [docs/MEASUREMENTS_FA.md](docs/MEASUREMENTS_FA.md) | Measured capacities, 10-account method, soak procedure, current honest status |
 | [docs/DEPLOY_LINUX_FA.md](docs/DEPLOY_LINUX_FA.md) | Linux deployment, Xvfb, systemd, headless login, reuse in other automations |
 | [docs/ARCHITECTURE_FA.md](docs/ARCHITECTURE_FA.md) | Module layout and data flow |
 | [AGENTS.md](AGENTS.md) | Development contract and non-negotiable invariants |
