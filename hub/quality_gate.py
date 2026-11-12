@@ -5,7 +5,8 @@ The gate is deliberately strict about *literal* content (letters, digits, quoted
 and lenient about taste. It never loops: one review, at most one refinement.
 """
 
-STRICT_REVIEW_PROMPT = """You are a merciless pre-press quality inspector for a generated image.
+REQUEST_PLACEHOLDER = "{request}"
+DEFAULT_REVIEW_PROMPT = STRICT_REVIEW_PROMPT = """You are a merciless pre-press quality inspector for a generated image.
 
 The user's original request was:
 ---BEGIN REQUEST---
@@ -55,8 +56,32 @@ Defects found by the quality inspector:
 Produce only the corrected image. No explanation, no extra variants."""
 
 
-def build_review_prompt(request: str) -> str:
-    return STRICT_REVIEW_PROMPT.format(request=(request or "").strip()[:4000])
+def validate_template(template: str) -> str:
+    """A custom rubric must stay a *template*: exactly the user request is injected."""
+    text = (template or "").strip()
+    if len(text) < 80:
+        raise ValueError("Quality prompt is too short (min 80 characters).")
+    if len(text.encode("utf-8")) > 12000:
+        raise ValueError("Quality prompt is too large (max 12 KB).")
+    if REQUEST_PLACEHOLDER not in text:
+        raise ValueError(
+            "Quality prompt must contain the {request} placeholder; it is replaced with "
+            "the user's prompt at generation time."
+        )
+    return text
+
+
+def build_review_prompt(request: str, template: str | None = None) -> str:
+    """Render the master rubric with the user's prompt inside it.
+
+    ``template`` is the operator's override when set, otherwise the shipped default.
+    The request is injected as a plain substitution (never .format), so a prompt that
+    contains braces cannot break the rubric.
+    """
+    base = template or DEFAULT_REVIEW_PROMPT
+    if REQUEST_PLACEHOLDER not in base:
+        base = DEFAULT_REVIEW_PROMPT
+    return base.replace(REQUEST_PLACEHOLDER, (request or "").strip()[:4000])
 
 
 def build_correction_prompt(request: str, issues: list[str]) -> str:

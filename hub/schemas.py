@@ -105,3 +105,7 @@ class ResolveBody(BaseModel):
 
     resolution: Literal["delivered_manually", "not_delivered", "abandoned"]
     note: str = Field(default="", max_length=500)
+
+
+class QualityPromptBody(BaseModel):
+    template: str = Field(min_length=80, max_length=12000)

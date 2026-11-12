@@ -620,6 +620,7 @@ Credentials from the iframe form are stored only in `data/accounts/<id>/auto-log
 | [START_HERE_FA.md](START_HERE_FA.md) | Persian quickstart + troubleshooting table |
 | [REPORT_FA.md](REPORT_FA.md) | Release report: what was broken, what changed, evidence |
 | [docs/FIRST_RUN_FA.md](docs/FIRST_RUN_FA.md) | Deep first-run: doctor, gateway, login, first image, backup |
+| [docs/QUALITY_LOOP_FA.md](docs/QUALITY_LOOP_FA.md) | Quality Loop: per-job review/repair rounds, strict text/number rubric, master prompt + `{request}` customization, API |
 | [docs/OPERATIONS_FA.md](docs/OPERATIONS_FA.md) | Capacity, failure modes, monitoring, on-demand workers |
 | [docs/DEPLOY_LINUX_FA.md](docs/DEPLOY_LINUX_FA.md) | Linux deployment, Xvfb, systemd, headless login, reuse in other automations |
 | [docs/ARCHITECTURE_FA.md](docs/ARCHITECTURE_FA.md) | Module layout and data flow |

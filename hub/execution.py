@@ -333,8 +333,16 @@ def _apply_quality_gate(ctx, acc, prompt, conversation_id, body, payload, url,
     try:
         url_chat = ctx.upstream(acc) + "/v1/chat/completions"
         current = body
+        template = (
+            ctx.quality_prompt_template()
+            if hasattr(ctx, "quality_prompt_template")
+            else None
+        )
         current_review = quality.parse_review(
-            _review_chat(url_chat, acc, conversation_id, quality.build_review_prompt(prompt))
+            _review_chat(
+                url_chat, acc, conversation_id,
+                quality.build_review_prompt(prompt, template),
+            )
         )
         meta["history"].append(_history_entry(0, current_review))
         best_body, best_review = body, current_review
@@ -359,7 +367,7 @@ def _apply_quality_gate(ctx, acc, prompt, conversation_id, body, payload, url,
                 refined_review = quality.parse_review(
                     _review_chat(
                         url_chat, acc, conversation_id,
-                        quality.build_review_prompt(prompt),
+                        quality.build_review_prompt(prompt, template),
                     )
                 )
             except Exception as exc:  # noqa: BLE001
@@ -406,7 +414,8 @@ def _review_chat(url_chat, acc, conversation_id, prompt):
     response = request_chat(
         url_chat,
         acc["api_secret"],
-        {"conversation_id": conversation_id, "prompt": prompt},
+        {"conversation_id": conversation_id,
+         "messages": [{"role": "user", "content": prompt}]},
         timeout=180.0,
     )
     if response.status_code != 200 or not isinstance(response.data, dict):

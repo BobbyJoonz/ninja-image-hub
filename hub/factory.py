@@ -52,6 +52,11 @@ def create_app():
         "read_control_audit",
     ):
         setattr(ctx, name, partial(getattr(control, name), ctx))
+    from . import quality_prompt
+
+    for name in ("template_info", "save_prompt", "reset_prompt"):
+        setattr(ctx, name, partial(getattr(quality_prompt, name), ctx))
+    ctx.quality_prompt_template = lambda: quality_prompt.current_template(ctx)
     for name in ("now", "query_account"):
         setattr(ctx, name, partial(getattr(database, name), ctx))
     for name in (
@@ -227,6 +232,15 @@ def create_app():
     )
     app.get("/api/control/audit", dependencies=[Depends(ctx.require_admin)])(
         ctx.read_control_audit
+    )
+    app.get(
+        "/api/quality/prompt", dependencies=[Depends(ctx.require_admin)]
+    )(ctx.template_info)
+    app.put("/api/quality/prompt", dependencies=[Depends(ctx.csrf_admin)])(
+        ctx.save_prompt
+    )
+    app.delete("/api/quality/prompt", dependencies=[Depends(ctx.csrf_admin)])(
+        ctx.reset_prompt
     )
     app.post("/api/auth/login")(ctx.login)
     app.get("/api/auth/me")(ctx.me)

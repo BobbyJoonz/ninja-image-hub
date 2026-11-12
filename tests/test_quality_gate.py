@@ -168,3 +168,43 @@ def test_quality_loop_without_rounds_uses_global_mode(monkeypatch):
     assert body["data"][0]["url"] == "orig.png"
     assert meta["refines_allowed"] == 0
     assert meta["score"] == 9
+
+
+def test_quality_prompt_template_validation_and_render():
+    from hub import quality_gate as quality
+
+    with pytest.raises(ValueError):
+        quality.validate_template("too short")
+    with pytest.raises(ValueError):
+        quality.validate_template("no placeholder " + "x" * 120)
+    rendered = quality.build_review_prompt(
+        "BANNER 15",
+        "RUBRIC {request} END " + "x" * 100,
+    )
+    assert "BANNER 15" in rendered and "RUBRIC" in rendered
+
+
+def test_quality_prompt_api_roundtrip(loaded):
+    from helpers import auth
+
+    client, _ = loaded
+    headers = auth(client)
+    default = client.get("/api/quality/prompt", headers=headers)
+    assert default.status_code == 200
+    assert default.json()["is_custom"] is False
+    template = "CUSTOM RUBRIC {request} strict characters " + "x" * 100
+    saved = client.put(
+        "/api/quality/prompt", headers=headers, json={"template": template}
+    )
+    assert saved.status_code == 200 and saved.json()["is_custom"] is True
+    assert client.get("/api/quality/prompt", headers=headers).json()[
+        "is_custom"
+    ] is True
+    bad = client.put(
+        "/api/quality/prompt",
+        headers=headers,
+        json={"template": "missing placeholder " + "y" * 100},
+    )
+    assert bad.status_code == 422
+    reset = client.delete("/api/quality/prompt", headers=headers)
+    assert reset.status_code == 200 and reset.json()["is_custom"] is False

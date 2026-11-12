@@ -10,10 +10,12 @@ import {
   initResolveDialog,
 } from "./accounts.js";
 import { initStudio } from "./studio.js";
+import { initQualityPrompt } from "./operations_view.js";
 
 
 export function initBootstrap() {
   initStudio();
+  initQualityPrompt();
   initLoginDialog();
   initResolveDialog();
   initAccountDetails();

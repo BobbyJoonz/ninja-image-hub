@@ -584,6 +584,25 @@
                       </button>
                     </div>
                   </form>
+                <details class="quality-prompt-editor" id="qualityPromptEditor">
+                  <summary>Quality Loop rubric prompt (advanced)</summary>
+                  <p class="fine-print">
+                    One master rubric is used for every review. The user's prompt is inserted
+                    at <code>{request}</code>; keep that placeholder. Edit it here to tune how
+                    strictly text and numbers are scored — no redeploy needed.
+                  </p>
+                  <textarea id="qualityPromptText" rows="12" spellcheck="false"></textarea>
+                  <div class="modal-actions">
+                    <button type="button" class="btn primary" id="saveQualityPrompt">
+                      Save rubric
+                    </button>
+                    <button type="button" class="btn secondary" id="resetQualityPrompt">
+                      Reset to default
+                    </button>
+                    <span class="fine-print" id="qualityPromptStatus"></span>
+                  </div>
+                </details>
+
                 </article>
               </div>
               <aside class="ops-side">

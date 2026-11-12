@@ -1,8 +1,10 @@
 import { S } from "./state.js";
-import { $, esc, uiIcon } from "./dom.js";
+import { $, esc, uiIcon, toast } from "./dom.js";
+import { api } from "./api.js";
 
 
 export function renderOperations() {
+  loadQualityPrompt().catch(() => {});
   const c = S.control?.config;
   if (!c) return;
   const paused = Boolean(c.dispatch_paused),
@@ -52,3 +54,49 @@ export function renderOperations() {
         .join("")
     : '<p class="muted">No control changes recorded yet.</p>';
 }
+
+let qualityPromptLoaded = false;
+
+export async function loadQualityPrompt(force = false) {
+  const box = $("qualityPromptText");
+  if (!box) return;
+  if (qualityPromptLoaded && !force) return;
+  try {
+    const data = await api("/api/quality/prompt");
+    box.value = data.template;
+    $("qualityPromptStatus").textContent = data.is_custom
+      ? `custom rubric · ${data.hash}`
+      : "default rubric";
+    qualityPromptLoaded = true;
+  } catch (err) {
+    $("qualityPromptStatus").textContent = err.message;
+  }
+}
+
+export function initQualityPrompt() {
+  const save = $("saveQualityPrompt");
+  if (!save) return;
+  save.addEventListener("click", async () => {
+    try {
+      const data = await api("/api/quality/prompt", {
+        method: "PUT",
+        body: JSON.stringify({ template: $("qualityPromptText").value }),
+      });
+      $("qualityPromptStatus").textContent = `custom rubric · ${data.hash}`;
+      toast("Quality Loop rubric saved.");
+    } catch (err) {
+      toast(err.message, true);
+    }
+  });
+  $("resetQualityPrompt").addEventListener("click", async () => {
+    try {
+      const data = await api("/api/quality/prompt", { method: "DELETE" });
+      $("qualityPromptText").value = data.template;
+      $("qualityPromptStatus").textContent = "default rubric";
+      toast("Reset to the default rubric.");
+    } catch (err) {
+      toast(err.message, true);
+    }
+  });
+}
+
