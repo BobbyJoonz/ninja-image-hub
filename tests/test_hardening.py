@@ -533,7 +533,10 @@ def test_ui_bundle_contract():
     """Bundle A+B: skip link, favicon, labels, chart empty state, jobs toolbar, toasts."""
     html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
     css = all_css()
-    views = (ROOT / "frontend" / "modules" / "views.js").read_text(encoding="utf-8")
+    views = "\\n".join(
+        (ROOT / "frontend" / "modules" / name).read_text(encoding="utf-8")
+        for name in ("views.js", "analytics_view.js", "operations_view.js")
+    )
 
     # Bundle A: accessibility, favicon, dialog validation, naming, chart empty state
     assert 'class="skip-link" href="#mainContent"' in html

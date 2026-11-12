@@ -2,18 +2,27 @@
 
 import json
 import tempfile
+from collections.abc import Mapping, Sequence
 from types import SimpleNamespace
 
 import httpx
 
 MAX_JSON_BYTES = 32 * 1024 * 1024
 
+FileTuple = tuple[str, tuple[str, object, str]]
+
 
 class ResponseBudgetError(Exception):
     """Submission may have succeeded; the outcome must remain unknown."""
 
 
-def request_generation(url, secret, payload, n, files=None):
+def request_generation(
+    url: str,
+    secret: str,
+    payload: Mapping[str, object],
+    n: int,
+    files: Sequence[FileTuple] | None = None,
+) -> SimpleNamespace:
     """POST a generation request.
 
     ``files`` is an optional list of httpx multipart file tuples for reference images:
@@ -21,7 +30,7 @@ def request_generation(url, secret, payload, n, files=None):
     receives multipart/form-data (its /v1/images/generations accepts this and the UI
     uploads each file into the composer); otherwise the request stays plain JSON.
     """
-    request_kwargs = {"json": payload}
+    request_kwargs: dict[str, object] = {"json": payload}
     if files:
         request_kwargs = {
             "data": {key: str(value) for key, value in payload.items()},
@@ -55,7 +64,12 @@ def request_generation(url, secret, payload, n, files=None):
     return SimpleNamespace(status_code=status, headers=headers, data=data)
 
 
-def request_chat(url, secret, payload, timeout=180.0):
+def request_chat(
+    url: str,
+    secret: str,
+    payload: Mapping[str, object],
+    timeout: float = 180.0,
+) -> SimpleNamespace:
     """POST a text/review turn to the gateway (same conversation when conversation_id is set)."""
     with httpx.Client(trust_env=False, timeout=httpx.Timeout(read=timeout, connect=10)) as client:
         response = client.post(

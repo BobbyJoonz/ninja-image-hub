@@ -138,8 +138,9 @@ The docs above are the current description. Older versioned documents were remov
 - Gateway runtime patches live in `hub/gateway_patches.py` as an idempotent registry
   (`PATCH_ORDER`, `PATCH_MARKERS`, `apply_worker_patches`); the injected JS itself lives in
   `hub/patches/*.js` and is loaded read-only. Doctor imports the same marker names, never a
-  literal. Worker child-process lifecycle lives in `hub/worker_process.py`; diagnostics and
-  status stay in `hub/workers.py`, which re-exports the lifecycle for the runtime/tests.
+  literal. Worker child-process lifecycle is `hub/worker_process.py`; workspace copy, env
+  allowlist, launch command and display are `hub/worker_setup.py`; diagnostics/status stay
+  in `hub/workers.py`, which re-exports both for the runtime/tests.
 - A job's single execution lives in `hub/execution.py`; the scheduler keeps dispatch,
   health, wake/reap and supervision. Failure classification lives in `hub/gateway_errors.py`.
 - Shared test scaffolding lives in `tests/conftest.py` + `tests/helpers.py` (`build_hub`,
@@ -153,7 +154,9 @@ The docs above are the current description. Older versioned documents were remov
   remains an aggregating `@import` entry point for compatibility. Tests read `all_css()`.
 - `frontend/app.js` is only the entrypoint: bootstrap/login/nav/account wiring lives in
   `modules/bootstrap.js`, generation in `modules/generate.js`, gallery/operations/jobs
-  toolbars in their own modules. Do not grow app.js back into a god file.
+  toolbars in their own modules, account dialogs in `account_login.js` /
+  `resolve_dialog.js`, and each large view renderer in its own `*_view.js`. Do not grow
+  app.js, accounts.js or views.js back into god files.
 - `.github/workflows/ci.yml` runs static checks (ruff real errors, strict mypy for the pure
   modules in `pyproject.toml`, compile, JS syntax, node tests, icons, seal, offline test
   subset) and the full suite as a required job; keep both green.
@@ -178,7 +181,7 @@ The docs above are the current description. Older versioned documents were remov
 ## Required checks
 
 ```bash
-python -m pytest -q          # 157 passed, 1 skipped (skip = symlink test on unprivileged Windows)
+python -m pytest -q          # 163 passed, 1 skipped (skip = symlink test on unprivileged Windows)
 node --test tests/frontend.test.mjs
 node --check frontend/app.js # plus all frontend modules and preview/demo.js
 python scripts/doctor.py     # exit 0 = ready

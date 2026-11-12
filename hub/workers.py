@@ -30,6 +30,17 @@ from .worker_process import (  # re-exported: one import surface for the runtime
     worker_rss_mb,
 )  # noqa: F401 - re-exported for the runtime and tests
 
+from .worker_setup import (  # noqa: F401 - re-exported for the runtime/tests
+    WORKER_ENV_ALLOWLIST,
+    _read_auto_login,
+    display_mode,
+    display_state,
+    ensure_worker_copy,
+    runtime_installed,
+    worker_command,
+    worker_env,
+)
+
 from .gateway_patches import (  # re-exported for compatibility and tests
     FAST_INSERT_MARKER,
     PATCH_MARKERS,

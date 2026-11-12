@@ -10,7 +10,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Node.js](https://img.shields.io/badge/node-22%2B-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![SQLite](https://img.shields.io/badge/SQLite-WAL-003B57?logo=sqlite&logoColor=white)](https://www.sqlite.org/wal.html)
-[![Tests](https://img.shields.io/badge/tests-157%20passed%20%C2%B7%201%20skipped-2ea043)](#verification)
+[![Tests](https://img.shields.io/badge/tests-163%20passed%20%C2%B7%201%20skipped-2ea043)](#verification)
 [![Accounts](https://img.shields.io/badge/accounts-1%20to%2016-8957e5)](#multi-account-model)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-linux%20%7C%20windows-6e7681)](#quick-start)
@@ -197,14 +197,15 @@ flowchart LR
 | `hub/scheduler.py` | Fair dispatch, health snapshot, wake/reap, crash supervisor (loop + policy only) |
 | `hub/execution.py`, `hub/gateway_errors.py` | One job execution and the honest failure classification, testable independently of the loop |
 | `hub/accounts.py` | Account CRUD, archive/purge, plan/identity storage |
-| `hub/workers.py`, `hub/worker_process.py` | Worker diagnostics/status vs. child-process lifecycle (ports, env, launch, stop, orphan reclaim) |
+| `hub/workers.py`, `hub/worker_process.py`, `hub/worker_setup.py` | Diagnostics/status · child-process lifecycle · workspace/env/launch command |
 | `hub/gateway_patches.py`, `hub/patches/*.js` | Idempotent, fail-open runtime patches for the pinned gateway; injected JS lives in reviewable asset files |
 | `hub/gateway_patches.py` | Idempotent, fail-open runtime patches for the pinned gateway; one registry the doctor can verify |
 | `hub/gateway.py` | Upstream HTTP contract (bounded JSON envelope, no replay) |
 | `hub/media.py`, `hub/storage.py`, `hub/delivery.py` | Chunked budgets, atomic publish, previews, ZIP, Range |
 | `hub/security.py`, `hub/limits.py` | Session/CSRF/Bearer, UTF-8-safe comparisons, body caps |
 | `hub/control.py`, `hub/system.py`, `hub/telemetry.py` | Live settings + audit, health, analytics |
-| `frontend/` | Native ES modules: state · api · controller · views · accounts · dom · `icons/sprite.svg` |
+| 
+| `frontend/` | Native ES modules: entrypoint + bootstrap/generate/gallery/jobs/operations, studio, account dialogs/forms, per-view renderers · `styles/` · `icons/sprite.svg` |
 | `deploy/` | Linux installer + systemd unit |
 | `scripts/` | doctor, gateway installer, preview server, bootstrap, audit, benchmark, `resolve_unknown`, shared `_panel` client |
 
@@ -591,7 +592,7 @@ Guardrails:
 ## Verification
 
 ```bash
-python -m pytest -q                     # 157 passed, 1 skipped  (~96 s)
+python -m pytest -q                     # 163 passed, 1 skipped  (~96 s)
 node --test tests/frontend.test.mjs     # 6 passed
 node --check frontend/app.js            # + all modules + preview/demo.js
 python scripts/doctor.py                # exit 0 = ready

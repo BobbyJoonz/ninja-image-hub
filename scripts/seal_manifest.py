@@ -79,22 +79,52 @@ def _tracked_files():
     except (OSError, subprocess.SubprocessError):
         return None
     names = [name for name in completed.stdout.decode("utf-8", "replace").split("\0") if name]
-    return [ROOT / name for name in names]
+    return names
+
+
+def _index_digest(name):
+    """Hash the staged/committed blob so uncommitted concurrent edits cannot leak into a seal."""
+    import subprocess
+
+    completed = subprocess.run(
+        ["git", "-C", str(ROOT), "show", f":{name}"],
+        capture_output=True,
+        check=True,
+        timeout=60,
+    )
+    data = completed.stdout
+    if name.rsplit(".", 1)[-1].lower() in {suffix.lstrip(".") for suffix in TEXT_SUFFIXES} or Path(
+        name
+    ).name in TEXT_NAMES:
+        data = data.replace(b"\r\n", b"\n")
+    return hashlib.sha256(data).hexdigest()
 
 
 def entries():
     tracked = _tracked_files()
-    paths = tracked if tracked is not None else sorted(ROOT.rglob("*"))
     result = {}
-    for path in paths:
-        if not path.is_file():
-            continue
-        rel = path.relative_to(ROOT)
+    if tracked is None:
+        for path in sorted(ROOT.rglob("*")):
+            if not path.is_file():
+                continue
+            rel = path.relative_to(ROOT)
+            if any(part in SKIP_DIRS for part in rel.parts):
+                continue
+            if rel.name in SKIP_NAMES or rel.as_posix() in SKIP_NAMES:
+                continue
+            result[rel.as_posix()] = digest(path)
+        return result
+    for name in tracked:
+        rel = Path(name)
         if any(part in SKIP_DIRS for part in rel.parts):
             continue
         if rel.name in SKIP_NAMES or rel.as_posix() in SKIP_NAMES:
             continue
-        result[rel.as_posix()] = digest(path)
+        try:
+            result[rel.as_posix()] = _index_digest(name)
+        except Exception:
+            # A deleted-but-still-staged path must not crash the seal.
+            continue
     return result
 
 

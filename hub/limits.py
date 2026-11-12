@@ -9,23 +9,33 @@ missing/forged Content-Length cannot exceed the documented limits; this middlewa
 first cheap gate (413) for honest browsers.
 """
 
+from collections.abc import Callable, Iterable
+
 from starlette.responses import JSONResponse
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
+
+
+async def _respond(
+    scope: Scope, receive: Receive, send: Send, detail: str, status: int
+) -> None:
+    """ASGI responses return None; centralise the cast-free JSONResponse call."""
+    await JSONResponse({"detail": detail}, status_code=status)(scope, receive, send)
 
 
 class RequestBodyLimit:
     def __init__(
         self,
-        app,
-        max_bytes=64 * 1024,
-        upload_paths=(),
-        upload_limit=None,
-    ):
+        app: ASGIApp,
+        max_bytes: int = 64 * 1024,
+        upload_paths: Iterable[str] = (),
+        upload_limit: Callable[[], int] | int | None = None,
+    ) -> None:
         self.app = app
         self.max_bytes = max_bytes
         self.upload_paths = set(upload_paths or ())
         self.upload_limit = upload_limit
 
-    def _upload_cap(self):
+    def _upload_cap(self) -> int:
         if callable(self.upload_limit):
             try:
                 return int(self.upload_limit())
@@ -33,13 +43,14 @@ class RequestBodyLimit:
                 return 0
         return int(self.upload_limit or 0)
 
-    async def __call__(self, scope, receive, send):
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http" or scope.get("method") not in (
             "POST",
             "PATCH",
             "PUT",
         ):
-            return await self.app(scope, receive, send)
+            await self.app(scope, receive, send)
+            return
 
         path = scope.get("path", "")
         if path in self.upload_paths:
@@ -51,43 +62,44 @@ class RequestBodyLimit:
                     # A chunked upload would otherwise stream unbounded into Starlette's
                     # spool before the route can enforce its total. Browsers and curl -F
                     # always send Content-Length for multipart bodies.
-                    return await JSONResponse(
-                        {
-                            "detail": "Uploads require a Content-Length header; chunked uploads are not accepted."
-                        },
-                        status_code=411,
-                    )(scope, receive, send)
+                    return await _respond(
+                        scope,
+                        receive,
+                        send,
+                        "Uploads require a Content-Length header; chunked uploads are not accepted.",
+                        411,
+                    )
                 try:
                     declared = int(raw_length)
                 except ValueError:
-                    return await JSONResponse(
-                        {"detail": "Invalid content length."}, status_code=400
-                    )(scope, receive, send)
+                    return await _respond(
+                        scope, receive, send, "Invalid content length.", 400
+                    )
                 if declared > cap:
-                    return await JSONResponse(
-                        {
-                            "detail": f"Upload exceeds the {cap // (1024 * 1024)} MiB request limit."
-                        },
-                        status_code=413,
-                    )(scope, receive, send)
+                    return await _respond(
+                        scope,
+                        receive,
+                        send,
+                        f"Upload exceeds the {cap // (1024 * 1024)} MiB request limit.",
+                        413,
+                    )
             # Stream: Starlette spools each part to disk; the route enforces the real
             # per-file and total limits before storing anything.
-            return await self.app(scope, receive, send)
+            await self.app(scope, receive, send)
+            return
 
-        async def reject():
-            await JSONResponse(
-                {"detail": "JSON request exceeds 64 KiB."}, status_code=413
-            )(scope, receive, send)
+        async def reject() -> None:
+            await _respond(scope, receive, send, "JSON request exceeds 64 KiB.", 413)
 
         headers = dict(scope.get("headers", []))
         try:
             if int(headers.get(b"content-length", b"0")) > self.max_bytes:
                 return await reject()
         except ValueError:
-            return await JSONResponse(
-                {"detail": "Invalid content length."}, status_code=400
-            )(scope, receive, send)
-        chunks = []
+            return await _respond(
+                scope, receive, send, "Invalid content length.", 400
+            )
+        chunks: list[bytes] = []
         total = 0
         while True:
             message = await receive()
@@ -102,7 +114,7 @@ class RequestBodyLimit:
                 break
         delivered = False
 
-        async def replay():
+        async def replay() -> Message:
             nonlocal delivered
             if delivered:
                 return await receive()
