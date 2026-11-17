@@ -259,9 +259,7 @@ def execute_job(ctx, job_id, acc, prompt, aspect, quality_preference, n=1):
                     quality_score=quality_score,
                     quality_verdict=quality_verdict,
                     quality_meta=(
-                        json.dumps(quality_meta, ensure_ascii=False)[:3900]
-                        if quality_meta
-                        else None
+                        _quality_meta_json(quality_meta) if quality_meta else None
                     ),
                 )
             )
@@ -371,6 +369,11 @@ def _apply_quality_gate(ctx, acc, prompt, conversation_id, conversation_url, bod
             if refined.status_code != 200 or not isinstance(refined.data, dict):
                 meta["error"] = f"refinement HTTP {refined.status_code}"
                 break
+            refined_applied = refined.data.get("applied") or {}
+            latest_url = refined_applied.get("conversation_url") or conversation_url
+            if latest_url:
+                conversation_url = latest_url
+                meta["conversation_url"] = latest_url
             try:
                 refined_review = quality.parse_review(
                     _review_chat(
@@ -443,3 +446,62 @@ def _review_chat(url_chat, acc, conversation_id, conversation_url, prompt):
     if not content:
         raise RuntimeError("review returned no text")
     return content
+
+
+def _quality_meta_json(meta, limit=3900):
+    """Serialise quality metadata without ever writing truncated (invalid) JSON."""
+
+    def compact(value):
+        if not isinstance(value, dict):
+            return value
+        out = dict(value)
+        history = out.get("history")
+        if isinstance(history, list):
+            out["history"] = [
+                {
+                    key: entry.get(key)
+                    for key in ("attempt", "overall", "text", "numbers", "verdict")
+                    if entry.get(key) is not None
+                }
+                | ({"issues": (entry.get("issues") or [])[:3]} if entry.get("issues") else {})
+                for entry in history[:4]
+            ]
+        for key in ("review", "refined_review"):
+            review = out.get(key)
+            if isinstance(review, dict):
+                out[key] = {
+                    field: review.get(field)
+                    for field in (
+                        "overall", "text_score", "numbers_score", "spelling_score",
+                        "layout_score", "verdict",
+                    )
+                    if review.get(field) is not None
+                } | ({"issues": (review.get("issues") or [])[:3]} if review.get("issues") else {})
+        for key in ("original_urls", "refined_urls"):
+            urls = out.get(key)
+            if isinstance(urls, list):
+                out[key] = urls[:10]
+        return out
+
+    payload = compact(meta)
+    encoded = json.dumps(payload, ensure_ascii=False)
+    if len(encoded) <= limit:
+        return encoded
+    payload.pop("history", None)
+    payload.pop("review", None)
+    payload.pop("refined_review", None)
+    encoded = json.dumps(payload, ensure_ascii=False)
+    if len(encoded) <= limit:
+        return encoded
+    fallback = {
+        key: payload.get(key)
+        for key in ("quality_loop", "mode", "rounds_requested", "refines_allowed",
+                    "threshold", "conversation_id", "conversation_url", "attempts",
+                    "score", "verdict", "refined", "error")
+        if payload.get(key) is not None
+    }
+    fallback["truncated"] = True
+    encoded = json.dumps(fallback, ensure_ascii=False)
+    return encoded[:limit] if len(encoded) <= limit else json.dumps(
+        {"truncated": True, "score": payload.get("score"), "verdict": payload.get("verdict")}
+    )

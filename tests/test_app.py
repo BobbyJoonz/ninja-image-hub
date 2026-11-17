@@ -249,7 +249,9 @@ def test_full_generation_path_with_isolated_mock_gateway(loaded, tmp_path, monke
     )
     assert r.status_code == 202, r.text
     jid = r.json()["id"]
-    for _ in range(100):
+    # Allow 10 s under load: the mock gateway is fast, but a busy host can delay the
+    # worker thread and this end-to-end assertion must not be timing-flaky in CI.
+    for _ in range(250):
         job = client.get("/api/jobs/" + jid).json()
         if job["status"] in ("completed", "failed"):
             break

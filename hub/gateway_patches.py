@@ -551,13 +551,15 @@ def _patch_quality_gate_v2(worker):
         changed = True
 
     text_open = "      if (options.conversationId) await openConversation(p, options.conversationId);"
-    if text_open in content and "openConversationUrl(p, options.conversationUrl)" not in content:
-        content = content.replace(
-            text_open,
+    text_at = content.find(text_open)
+    if text_at != -1 and "openConversationUrl(p, options.conversationUrl)" not in content[text_at:text_at + 400]:
+        # Scope the guard to this call site: other handlers already reference
+        # openConversationUrl, so a file-wide check silently skipped the text turn
+        # (the review chat kept reopening /c/<uuid> and 404ing inside a project).
+        content = content[:text_at] + (
             "      if (options.conversationUrl) await openConversationUrl(p, options.conversationUrl);\n"
-            "      else if (options.conversationId) await openConversation(p, options.conversationId);",
-            1,
-        )
+            "      else if (options.conversationId) await openConversation(p, options.conversationId);"
+        ) + content[text_at + len(text_open):]
         changed = True
 
     chat_conv = "  const conversationId = req.body.conversation_id ?? null;"
@@ -586,7 +588,11 @@ def _patch_quality_gate_v2(worker):
         changed = True
 
     gen_conv = "  const conversationId = req.body.conversation_id || null;"
-    if gen_conv in route and "req.body.conversation_url" not in route:
+    gen_at = route.find(gen_conv)
+    if gen_at != -1 and "const conversationUrl" not in route[gen_at:gen_at + 1500]:
+        # Scope the check to this handler: the edits route already declares the
+        # variable, so a file-wide guard silently skipped the generations route
+        # and every image job died with "conversationUrl is not defined".
         route = route.replace(
             gen_conv,
             gen_conv

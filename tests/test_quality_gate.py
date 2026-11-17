@@ -249,5 +249,40 @@ def test_quality_gate_v2_project_url_patch(tmp_path):
     assert "conversationUrlFromPage(p.url())" in chatgpt
     assert "req.body.conversation_url" in routes
     assert "firstConversationUrl" in routes
+    # guard-scope regressions: the text turn must open the URL, and the generations
+    # handler must declare conversationUrl before using it
+    assert (
+        "\n      if (options.conversationId) await openConversation(p, options.conversationId);"
+        not in chatgpt
+    )
+    complete = chatgpt[chatgpt.index("async function completeText") :]
+    assert "if (options.conversationUrl) await openConversationUrl" in complete[:4000]
+    assert routes.count("const conversationUrl = typeof req.body.conversation_url") >= 2
+    assert routes.index("const conversationUrl = typeof req.body.conversation_url") < routes.index(
+        "conversationUrl: i === 0 ? conversationUrl : undefined"
+    )
     # idempotent on the upgraded copy
     assert patches._patch_quality_gate_v2(worker) is False
+
+
+def test_quality_meta_json_never_truncates(monkeypatch):
+    import json
+
+    from hub import execution
+
+    huge = {
+        "quality_loop": True,
+        "score": 7,
+        "verdict": "fix",
+        "conversation_url": "https://chatgpt.com/g/g-p-x/c/abc",
+        "history": [
+            {"attempt": i, "overall": 5, "issues": ["x" * 400] * 8} for i in range(6)
+        ],
+        "review": {"overall": 5, "issues": ["y" * 500] * 10},
+        "original_urls": ["https://example.test/u%d.png" % i for i in range(20)],
+    }
+    raw = execution._quality_meta_json(huge)
+    assert len(raw) <= 3900
+    parsed = json.loads(raw)  # must be valid JSON, never a sliced fragment
+    assert parsed["score"] == 7
+    assert len(parsed.get("history", [])) <= 4
