@@ -286,3 +286,35 @@ def test_quality_meta_json_never_truncates(monkeypatch):
     parsed = json.loads(raw)  # must be valid JSON, never a sliced fragment
     assert parsed["score"] == 7
     assert len(parsed.get("history", [])) <= 4
+
+def test_quality_loop_keeps_complete_batch_when_refinement_is_partial(monkeypatch):
+    from types import SimpleNamespace
+
+    from hub import execution
+
+    review = iter([
+        '{"text_score": 5, "numbers_score": 4, "overall": 5, "verdict": "fix", "issues": ["wrong 15"]}',
+        '{"text_score": 10, "numbers_score": 10, "overall": 10, "verdict": "pass"}',
+    ])
+
+    def fake_chat(url, secret, payload, timeout=180.0):
+        return SimpleNamespace(status_code=200, data={"choices": [{"message": {"content": next(review)}}]})
+
+    def fake_generation(url, secret, payload, n):
+        # one image instead of the two the original request produced
+        return SimpleNamespace(status_code=200, data={"data": [{"url": "only-one.png"}]})
+
+    monkeypatch.setattr(execution, "request_chat", fake_chat)
+    monkeypatch.setattr(execution, "request_generation", fake_generation)
+    ctx = SimpleNamespace(
+        setting=lambda key: {"quality_gate": 0, "quality_threshold": 8}[key],
+        upstream=lambda acc: "http://127.0.0.1:41000",
+    )
+    body, meta = execution._apply_quality_gate(
+        ctx, {"api_secret": "x"}, "p", "conv-1", None,
+        {"data": [{"url": "a.png"}, {"url": "b.png"}]},
+        {"n": 2}, "http://127.0.0.1:41000/v1/images/generations", "extended", 2, rounds=1,
+    )
+    assert body["data"] == [{"url": "a.png"}, {"url": "b.png"}]
+    assert meta["refined"] is False
+    assert "fewer" not in meta["error"] and "1/2" in meta["error"]

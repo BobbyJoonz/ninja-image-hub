@@ -369,6 +369,16 @@ def _apply_quality_gate(ctx, acc, prompt, conversation_id, conversation_url, bod
             if refined.status_code != 200 or not isinstance(refined.data, dict):
                 meta["error"] = f"refinement HTTP {refined.status_code}"
                 break
+            # Never replace a complete batch with a partial one just because its review
+            # score is higher: fewer images is a regression, not an improvement.
+            original_count = len(body.get("data") or [])
+            refined_count = len(refined.data.get("data") or [])
+            if refined.data.get("partial") or refined_count < original_count:
+                meta["error"] = (
+                    f"refinement returned {refined_count}/{original_count} images; original kept"
+                )
+                meta["refined"] = False
+                break
             refined_applied = refined.data.get("applied") or {}
             latest_url = refined_applied.get("conversation_url") or conversation_url
             if latest_url:
