@@ -4,6 +4,7 @@ Kept separate from dispatch/supervision so the failure classification and cleanu
 be tested without starting the scheduler loop.
 """
 
+import hashlib
 import sys
 import time
 from datetime import datetime, timedelta, timezone
@@ -379,6 +380,15 @@ def _apply_quality_gate(ctx, acc, prompt, conversation_id, conversation_url, bod
                 )
                 meta["refined"] = False
                 break
+            # A "refinement" that returns the exact same bytes is a no-op or a stale
+            # extraction, not an improvement. Never replace the original with it.
+            identical = _same_image_bytes(body, refined.data)
+            if identical is True:
+                meta["error"] = "refinement returned identical image bytes; original kept"
+                meta["refined"] = False
+                break
+            if identical is None:
+                meta["bytes_verified"] = False
             refined_applied = refined.data.get("applied") or {}
             latest_url = refined_applied.get("conversation_url") or conversation_url
             if latest_url:
@@ -515,3 +525,30 @@ def _quality_meta_json(meta, limit=3900):
     return encoded[:limit] if len(encoded) <= limit else json.dumps(
         {"truncated": True, "score": payload.get("score"), "verdict": payload.get("verdict")}
     )
+
+
+def _image_digest(url):
+    """sha256 of a gateway-local image URL, or None when it cannot be verified."""
+    try:
+        with httpx.Client(
+            trust_env=False, timeout=httpx.Timeout(read=30, connect=5)
+        ) as client:
+            response = client.get(url)
+    except Exception:  # noqa: BLE001 - verification is best-effort
+        return None
+    if response.status_code != 200 or not response.content:
+        return None
+    return hashlib.sha256(response.content).hexdigest()
+
+
+def _same_image_bytes(original_body, refined_body):
+    """True when every refined image has the same bytes as the original; None unknown."""
+    original = [item.get("url") for item in (original_body.get("data") or [])]
+    refined = [item.get("url") for item in (refined_body.get("data") or [])]
+    if not original or not refined or len(original) != len(refined):
+        return None
+    original_digests = [_image_digest(url) for url in original]
+    refined_digests = [_image_digest(url) for url in refined]
+    if any(digest is None for digest in original_digests + refined_digests):
+        return None
+    return original_digests == refined_digests
