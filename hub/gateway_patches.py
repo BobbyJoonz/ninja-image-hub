@@ -23,6 +23,12 @@ PATCH_ORDER = (
     "_patch_quality_gate",
     "_patch_quality_gate_v2",
     "_patch_refine_no_stale_extract",
+    "_patch_password_fallback",
+    "_patch_password_fallback_v2",
+    "_patch_password_fallback_v3",
+    "_patch_password_fallback_v4",
+    "_patch_password_fallback_v5",
+    "_patch_totp_all_frames",
 )
 
 PATCH_MARKERS = {
@@ -36,6 +42,7 @@ PATCH_MARKERS = {
     "launch_args": "ninja:launch-args",
     "image_failure": "ninja:image-failure-detect",
     "quality_gate": "ninja:quality-gate",
+    "password_fallback": "ninja:password-fallback",
 }
 
 
@@ -51,6 +58,11 @@ DIAGNOSTICS_JS = _asset("diagnostics.js")
 PLAN_PROBE_JS = _asset("plan_probe.js")
 SETTINGS_PROBE_JS = _asset("settings_probe.js")
 LIVE_VIEW_JS = _asset("live_view.js")
+PASSWORD_FALLBACK_JS = _asset("password_fallback.js")
+PASSWORD_FALLBACK_V2_JS = _asset("password_fallback_v2.js")
+PASSWORD_FALLBACK_V3_JS = _asset("password_fallback_v3.js")
+PASSWORD_FALLBACK_V5_JS = _asset("password_fallback_v5.js")
+TOTP_ALL_FRAMES_JS = _asset("totp_all_frames.js")
 
 
 POPUP_FOLLOW_MARKER = "ninja:popup-follow"
@@ -719,6 +731,250 @@ def _patch_refine_no_stale_extract(worker):
         )
         route = route[:edits_start] + segment + route[edits_end:]
         route_path.write_text(route, encoding="utf-8")
+    return True
+
+
+PASSWORD_FALLBACK_MARKER = "ninja:password-fallback"
+
+
+def _patch_password_fallback(worker):
+    """Click 'Continue with password' when OpenAI shows the email-verification screen.
+
+    The verification page (title "Check your inbox") offers an official alternative
+    "Continue with password" button. Auto-login used to fail there with a
+    device_verification blocker. This patch injects a small helper and calls it at the
+    start of the password-field step, just before waiting for the password input.
+    """
+    path = pathlib.Path(worker) / "src" / "auto-login.js"
+    if not path.is_file():
+        return False
+    content = path.read_text(encoding="utf-8")
+    if PASSWORD_FALLBACK_MARKER in content:
+        return False
+
+    helper_anchor = "async function autoLogin("
+    if helper_anchor not in content:
+        return False
+    content = content.replace(
+        helper_anchor,
+        PASSWORD_FALLBACK_JS.rstrip() + "\n\n" + helper_anchor,
+        1,
+    )
+
+    step_anchor = "    await step(page, 'password-field', async () => {\n"
+    if content.count(step_anchor) != 1:
+        return False
+    content = content.replace(
+        step_anchor,
+        step_anchor
+        + "      // ninja:password-fallback — use the provider's own password path when\n"
+        + "      // an email-verification screen is shown instead of the password field.\n"
+        + "      await clickContinueWithPassword(page);\n",
+        1,
+    )
+    if PASSWORD_FALLBACK_MARKER not in content:
+        return False
+    path.write_text(content, encoding="utf-8")
+    return True
+
+
+PASSWORD_FALLBACK_V2_MARKER = "ninja:password-fallback-v2"
+
+
+def _patch_password_fallback_v2(worker):
+    """Replace the one-shot v1 helper with a polling version that waits for the screen."""
+    path = pathlib.Path(worker) / "src" / "auto-login.js"
+    if not path.is_file():
+        return False
+    content = path.read_text(encoding="utf-8")
+    if PASSWORD_FALLBACK_V2_MARKER in content:
+        return False
+    helper_re = re.compile(
+        r"// ninja:password-fallback\nasync function clickContinueWithPassword\([^)]*\) \{[\s\S]*?\n\}\n\n"
+    )
+    if helper_re.search(content):
+        content = helper_re.sub(PASSWORD_FALLBACK_V2_JS.rstrip() + "\n\n", content, count=1)
+    else:
+        helper_anchor = "async function autoLogin("
+        if helper_anchor not in content:
+            return False
+        content = content.replace(
+            helper_anchor, PASSWORD_FALLBACK_V2_JS.rstrip() + "\n\n" + helper_anchor, 1
+        )
+    # v1 call has no argument; v2 accepts an optional timeout, so it stays compatible.
+    if "await clickContinueWithPassword(page);" not in content:
+        step_anchor = "    await step(page, 'password-field', async () => {\n"
+        if content.count(step_anchor) != 1:
+            return False
+        content = content.replace(
+            step_anchor,
+            step_anchor
+            + "      // ninja:password-fallback-v2 — poll for the provider's password path\n"
+            + "      await clickContinueWithPassword(page, 12000);\n",
+            1,
+        )
+    if PASSWORD_FALLBACK_V2_MARKER not in content:
+        return False
+    path.write_text(content, encoding="utf-8")
+    return True
+
+
+PASSWORD_FALLBACK_V3_MARKER = "ninja:password-fallback-v3"
+
+
+def _patch_password_fallback_v3(worker):
+    """Replace v2 with an all-frames search for the password fallback button."""
+    path = pathlib.Path(worker) / "src" / "auto-login.js"
+    if not path.is_file():
+        return False
+    content = path.read_text(encoding="utf-8")
+    if PASSWORD_FALLBACK_V3_MARKER in content:
+        return False
+    helper_re = re.compile(
+        r"// ninja:password-fallback[\s\S]*?async function clickContinueWithPassword\([^)]*\) \{[\s\S]*?\n\}\n\n"
+    )
+    if helper_re.search(content):
+        content = helper_re.sub(PASSWORD_FALLBACK_V3_JS.rstrip() + "\n\n", content, count=1)
+    else:
+        helper_anchor = "async function autoLogin("
+        if helper_anchor not in content:
+            return False
+        content = content.replace(
+            helper_anchor, PASSWORD_FALLBACK_V3_JS.rstrip() + "\n\n" + helper_anchor, 1
+        )
+    if "clickContinueWithPassword(page" not in content:
+        step_anchor = "    await step(page, 'password-field', async () => {\n"
+        if content.count(step_anchor) != 1:
+            return False
+        content = content.replace(
+            step_anchor,
+            step_anchor
+            + "      // ninja:password-fallback-v3 — search all frames for the password path\n"
+            + "      await clickContinueWithPassword(page, 12000);\n",
+            1,
+        )
+    if PASSWORD_FALLBACK_V3_MARKER not in content:
+        return False
+    path.write_text(content, encoding="utf-8")
+    return True
+
+
+PASSWORD_FALLBACK_V4_MARKER = "ninja:password-fallback-v4"
+
+
+def _patch_password_fallback_v4(worker):
+    """Give the button-poller the whole password wait window (60s)."""
+    path = pathlib.Path(worker) / "src" / "auto-login.js"
+    if not path.is_file():
+        return False
+    content = path.read_text(encoding="utf-8")
+    if PASSWORD_FALLBACK_V4_MARKER in content:
+        return False
+    changed = False
+    for old in (
+        "await clickContinueWithPassword(page);",
+        "await clickContinueWithPassword(page, 12000);",
+    ):
+        if old in content:
+            content = content.replace(
+                old,
+                "// ninja:password-fallback-v4 — poll the whole password wait window\n"
+                "      await clickContinueWithPassword(page, FIELD_TIMEOUT_MS);",
+                1,
+            )
+            changed = True
+            break
+    if changed and PASSWORD_FALLBACK_V4_MARKER not in content:
+        # mark on the helper line so node --check and doctor can verify it
+        content = content.replace(
+            "// ninja:password-fallback-v3",
+            "// ninja:password-fallback-v3 (v4: full window)",
+            1,
+        )
+    if PASSWORD_FALLBACK_V4_MARKER not in content:
+        content = content.replace(
+            "async function clickContinueWithPassword",
+            "// ninja:password-fallback-v4\nasync function clickContinueWithPassword",
+            1,
+        )
+    if not changed and "// ninja:password-fallback-v4" not in content:
+        return False
+    path.write_text(content, encoding="utf-8")
+    return True
+
+
+PASSWORD_FALLBACK_V5_MARKER = "ninja:password-fallback-v5"
+
+
+def _patch_password_fallback_v5(worker):
+    """Remove duplicate helper definitions; keep one text-based all-frame clicker."""
+    path = pathlib.Path(worker) / "src" / "auto-login.js"
+    if not path.is_file():
+        return False
+    content = path.read_text(encoding="utf-8")
+    if PASSWORD_FALLBACK_V5_MARKER in content:
+        return False
+    # Remove every existing helper definition (v1..v4), including its leading comment.
+    pattern = re.compile(
+        r"(?:\n)?// ninja:password-fallback[^\n]*\n"
+        r"async function clickContinueWithPassword\([^)]*\) \{[\s\S]*?\n\}\n"
+    )
+    content, removed = pattern.subn("\n", content)
+    anchor = "async function autoLogin("
+    if anchor not in content:
+        return False
+    content = content.replace(
+        anchor, PASSWORD_FALLBACK_V5_JS.rstrip() + "\n\n" + anchor, 1
+    )
+    if "clickContinueWithPassword(page" not in content.split(anchor)[1][:4000]:
+        # the call site may have been removed with a helper; restore it
+        step = "    await step(page, 'password-field', async () => {\n"
+        if step not in content:
+            return False
+        content = content.replace(
+            step,
+            step
+            + "      // ninja:password-fallback-v5 — use the provider's password path\n"
+            + "      await clickContinueWithPassword(page, FIELD_TIMEOUT_MS);\n",
+            1,
+        )
+    if PASSWORD_FALLBACK_V5_MARKER not in content:
+        return False
+    path.write_text(content, encoding="utf-8")
+    return True
+
+
+TOTP_ALL_FRAMES_MARKER = "ninja:totp-all-frames"
+
+
+def _patch_totp_all_frames(worker):
+    """Search all frames for the MFA code field (it can be inside an iframe)."""
+    path = pathlib.Path(worker) / "src" / "totp-step.js"
+    if not path.is_file():
+        return False
+    content = path.read_text(encoding="utf-8")
+    if TOTP_ALL_FRAMES_MARKER in content:
+        return False
+    anchor = "async function findCodeField(page) {"
+    if content.count(anchor) != 1:
+        return False
+    content = content.replace(
+        anchor,
+        TOTP_ALL_FRAMES_JS.rstrip() + "\n\n" + anchor,
+        1,
+    )
+    old = "  const single = await findSingleField(page);"
+    if content.count(old) != 1:
+        return False
+    content = content.replace(
+        old,
+        "  // ninja:totp-all-frames — look in every frame, not just the main one\n"
+        "  const single = await ninjaFindCodeField(page) || await findSingleField(page);",
+        1,
+    )
+    if TOTP_ALL_FRAMES_MARKER not in content:
+        return False
+    path.write_text(content, encoding="utf-8")
     return True
 
 
