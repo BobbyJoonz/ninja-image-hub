@@ -39,6 +39,22 @@ missing word, cut-off text or unreadable label. `overall` must not be higher tha
 lowest content score. `verdict` is "fix" whenever any literal text or number is wrong.
 """
 
+EDIT_PROMPT = """Edit the attached image. Keep its composition, subject, colours,
+lighting, framing and style as close to identical as possible. Change ONLY the text and
+number defects listed below, then render the corrected text crisply and legibly. Do not
+add, remove or rearrange objects.
+
+Original request:
+---BEGIN REQUEST---
+{request}
+---END REQUEST---
+
+Defects found by the quality inspector:
+{issues}
+
+Produce only the corrected image."""
+
+
 CORRECTION_PROMPT = """Regenerate the image from this conversation with the SAME composition,
 subject, colours, lighting, framing and style. Change ONLY the text/number defects listed
 below — leave every other pixel-level design decision as close to the previous image as
@@ -82,6 +98,11 @@ def build_review_prompt(request: str, template: str | None = None) -> str:
     if REQUEST_PLACEHOLDER not in base:
         base = DEFAULT_REVIEW_PROMPT
     return base.replace(REQUEST_PLACEHOLDER, (request or "").strip()[:4000])
+
+
+def build_edit_prompt(request: str, issues: list[str]) -> str:
+    listed = "\n".join(f"- {str(item)[:300]}" for item in (issues or [])[:12]) or "- text mismatch"
+    return EDIT_PROMPT.format(request=(request or "").strip()[:4000], issues=listed)
 
 
 def build_correction_prompt(request: str, issues: list[str]) -> str:

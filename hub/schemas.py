@@ -42,6 +42,8 @@ class GenerateBody(BaseModel):
     idempotency_key: str | None = Field(default=None, min_length=8, max_length=128)
     # Quality Loop: review the image and regenerate up to N times when text/numbers are wrong.
     quality_rounds: int = Field(default=0, ge=0, le=3)
+    # Guaranteed literal text: render requested strings with a real font after generation.
+    text_overlay: bool = False
     # Reference images uploaded through POST /api/uploads (or /v1/uploads).
     upload_id: str | None = Field(
         default=None,

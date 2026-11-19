@@ -5,6 +5,7 @@ be tested without starting the scheduler loop.
 """
 
 import hashlib
+import pathlib
 import sys
 import time
 from datetime import datetime, timedelta, timezone
@@ -17,7 +18,8 @@ from . import effort as effort_tier
 import json
 
 from . import quality_gate as quality
-from .gateway import request_chat, request_generation, ResponseBudgetError
+from . import text_overlay as typography
+from .gateway import request_chat, request_edit, request_generation, ResponseBudgetError
 from .gateway_errors import gateway_failure_text, parse_gateway_failure
 
 
@@ -46,11 +48,14 @@ def execute_job(ctx, job_id, acc, prompt, aspect, quality_preference, n=1):
         with ctx.engine.connect() as conn:
             job_row = conn.execute(
                 select(
-                    ctx.jobs.c.reference_upload_id, ctx.jobs.c.quality_rounds
+                    ctx.jobs.c.reference_upload_id, ctx.jobs.c.quality_rounds,
+                    ctx.jobs.c.text_overlay,
                 ).where(ctx.jobs.c.id == job_id)
             ).first()
         upload_id = job_row[0] if job_row else None
         quality_rounds = int((job_row[1] if job_row else 0) or 0)
+        overlay_enabled = bool(job_row[2]) if job_row else False
+        overlay_texts = typography.extract_literals(prompt) if overlay_enabled else []
         files = None
         if upload_id:
             upload = ctx.load_upload(upload_id)
@@ -86,6 +91,8 @@ def execute_job(ctx, job_id, acc, prompt, aspect, quality_preference, n=1):
         # delivered image is never discarded or retried.
         thinking_effort = ctx.setting("thinking_effort")
         thinking_mode = effort_tier.gateway_mode(thinking_effort)
+        if overlay_texts:
+            prompt = typography.no_text_guidance(prompt, overlay_texts)
         payload = {
             "prompt": prompt,
             "aspect_ratio": aspect,
@@ -214,6 +221,8 @@ def execute_job(ctx, job_id, acc, prompt, aspect, quality_preference, n=1):
                 quality_score = quality_meta.get("score")
                 quality_verdict = quality_meta.get("verdict")
                 conversation_id = quality_meta.get("conversation_id") or conversation_id
+        if overlay_texts:
+            _apply_text_overlay(ctx, response_body, overlay_texts, job_id)
         stored, save_error = ctx.record_image_batch(
             response_body, job_id, acc["port"], n
         )
@@ -362,33 +371,49 @@ def _apply_quality_gate(ctx, acc, prompt, conversation_id, conversation_url, bod
             refined_payload["conversation_id"] = conversation_id
             if conversation_url:
                 refined_payload["conversation_url"] = conversation_url
+            refined = None
+            refine_method = None
+            same_chat_problem = "same-chat regeneration unavailable"
             try:
-                refined = request_generation(url, acc["api_secret"], refined_payload, n)
-            except Exception as exc:  # noqa: BLE001 - keep the best image so far
-                meta["error"] = "refinement call failed: " + str(exc)[:160]
-                break
-            if refined.status_code != 200 or not isinstance(refined.data, dict):
-                meta["error"] = f"refinement HTTP {refined.status_code}"
-                break
-            # Never replace a complete batch with a partial one just because its review
-            # score is higher: fewer images is a regression, not an improvement.
-            original_count = len(body.get("data") or [])
-            refined_count = len(refined.data.get("data") or [])
-            if refined.data.get("partial") or refined_count < original_count:
+                same_chat = request_generation(url, acc["api_secret"], refined_payload, n)
+            except Exception as exc:  # noqa: BLE001 - fall through to the edit path
+                meta["refine_same_chat_error"] = str(exc)[:160]
+                same_chat = None
+            if (
+                same_chat is not None
+                and same_chat.status_code == 200
+                and isinstance(same_chat.data, dict)
+            ):
+                same_chat_problem = _refinement_problem(body, same_chat.data)
+                if same_chat_problem is None:
+                    refined, refine_method = same_chat, "same_chat"
+            elif same_chat is not None:
+                same_chat_problem = f"same-chat HTTP {same_chat.status_code}"
+                meta["refine_same_chat_error"] = same_chat_problem
+            if refined is None:
+                # Reused chats can answer without rendering a NEW image (the DOM still
+                # holds the old one). A real image edit always renders one from the
+                # attached image, so use it as the deterministic repair path.
+                edited = _edit_refinement(
+                    ctx, acc, body, prompt, current_review, thinking_mode
+                )
+                if edited is not None:
+                    edited_response, edit_prompt_used = edited
+                    edit_problem = _refinement_problem(body, edited_response.data)
+                    if edit_problem is None:
+                        refined, refine_method = edited_response, "edit"
+                        meta["edit_prompt"] = edit_prompt_used[:300]
+                    else:
+                        meta["refine_edit_error"] = edit_problem
+            if refined is None:
                 meta["error"] = (
-                    f"refinement returned {refined_count}/{original_count} images; original kept"
+                    meta.get("refine_edit_error")
+                    or same_chat_problem
+                    or "refinement did not produce a new image; original kept"
                 )
                 meta["refined"] = False
                 break
-            # A "refinement" that returns the exact same bytes is a no-op or a stale
-            # extraction, not an improvement. Never replace the original with it.
-            identical = _same_image_bytes(body, refined.data)
-            if identical is True:
-                meta["error"] = "refinement returned identical image bytes; original kept"
-                meta["refined"] = False
-                break
-            if identical is None:
-                meta["bytes_verified"] = False
+            meta["refine_method"] = refine_method
             refined_applied = refined.data.get("applied") or {}
             latest_url = refined_applied.get("conversation_url") or conversation_url
             if latest_url:
@@ -552,3 +577,93 @@ def _same_image_bytes(original_body, refined_body):
     if any(digest is None for digest in original_digests + refined_digests):
         return None
     return original_digests == refined_digests
+
+
+def _download_image_bytes(url):
+    """Fetch a gateway-local image once; returns (bytes, mime) or None."""
+    try:
+        with httpx.Client(
+            trust_env=False, timeout=httpx.Timeout(read=60, connect=5)
+        ) as client:
+            response = client.get(url)
+    except Exception:  # noqa: BLE001
+        return None
+    if response.status_code != 200 or not response.content:
+        return None
+    mime = (response.headers.get("content-type") or "image/png").split(";")[0].strip()
+    return response.content, mime
+
+
+def _refinement_problem(original_body, refined_body):
+    """Why a refinement result must not replace the original (or None when okay)."""
+    if not isinstance(refined_body, dict):
+        return "invalid refinement response"
+    original_count = len(original_body.get("data") or [])
+    refined_count = len(refined_body.get("data") or [])
+    if refined_body.get("partial") or refined_count < original_count:
+        return f"refinement returned {refined_count}/{original_count} images"
+    if _same_image_bytes(original_body, refined_body) is True:
+        return "refinement returned identical image bytes"
+    return None
+
+
+def _edit_refinement(ctx, acc, body, prompt, review, thinking_mode):
+    """Real image edit with the original image as input (new image guaranteed)."""
+    if len(body.get("data") or []) != 1:
+        return None
+    url = (body["data"][0] or {}).get("url")
+    if not url:
+        return None
+    downloaded = _download_image_bytes(url)
+    if not downloaded:
+        return None
+    raw, mime = downloaded
+    ext = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp"}.get(mime, "png")
+    edit_prompt = quality.build_edit_prompt(prompt, (review or {}).get("issues") or [])
+    try:
+        response = request_edit(
+            ctx.upstream(acc) + "/v1/images/edits",
+            acc["api_secret"],
+            raw,
+            mime,
+            f"original.{ext}",
+            edit_prompt,
+            thinking_mode=thinking_mode,
+        )
+    except Exception:  # noqa: BLE001
+        return None
+    if response.status_code != 200 or not isinstance(response.data, dict):
+        return None
+    return response, edit_prompt
+
+
+def _apply_text_overlay(ctx, body, texts, job_id):
+    """Compose guaranteed text into the gateway response before storage.
+
+    Composed bytes travel as ``b64_json`` so the normal storage path keeps its
+    anti-SSRF URL checks; the raw model image is kept as an audit copy.
+    """
+    import base64
+
+    items = body.get("data")
+    if not isinstance(items, list):
+        return
+    audit = pathlib.Path(ctx.DATA) / "overlay_originals" / job_id
+    for position, item in enumerate(items):
+        if not isinstance(item, dict):
+            continue
+        url = item.get("url")
+        if not url:
+            continue
+        downloaded = _download_image_bytes(url)
+        if not downloaded:
+            continue
+        raw, mime = downloaded
+        composed = typography.render(raw, texts)
+        try:
+            audit.mkdir(parents=True, exist_ok=True)
+            (audit / f"original-{position + 1}.bin").write_bytes(raw)
+        except OSError:
+            pass
+        item.pop("url", None)
+        item["b64_json"] = base64.b64encode(composed).decode("ascii")

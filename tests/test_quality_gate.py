@@ -355,4 +355,126 @@ def test_quality_loop_rejects_identical_refinement(monkeypatch):
     )
     assert body["data"][0]["url"].endswith("orig.png")
     assert meta["refined"] is False
-    assert "identical" in meta["error"]
+    assert meta["error"]
+
+
+def test_quality_loop_falls_back_to_image_edit(monkeypatch):
+    from types import SimpleNamespace
+
+    from hub import execution
+
+    reviews = iter([
+        '{"text_score": 5, "numbers_score": 5, "overall": 5, "verdict": "fix", "issues": ["wrong 15"]}',
+        '{"text_score": 10, "numbers_score": 10, "overall": 10, "verdict": "pass"}',
+    ])
+    payloads = []
+
+    def fake_chat(url, secret, payload, timeout=180.0):
+        payloads.append(payload)
+        return SimpleNamespace(
+            status_code=200,
+            data={"choices": [{"message": {"content": next(reviews)}}]},
+        )
+
+    def fake_same_chat_generation(url, secret, payload, n):
+        # the reused chat returned no new image
+        return SimpleNamespace(status_code=500, data={"error_kind": "generation_failed"})
+
+    def fake_edit(url, secret, raw, mime, filename, prompt, n=1, thinking_mode=None, timeout=720.0):
+        assert raw == b"original-bytes"
+        return SimpleNamespace(
+            status_code=200,
+            data={
+                "data": [{"url": "http://127.0.0.1:41000/images/edited.png"}],
+                "applied": {"conversation_url": "https://chatgpt.com/g/g-p-x/c/edited-chat"},
+            },
+        )
+
+    monkeypatch.setattr(execution, "request_chat", fake_chat)
+    monkeypatch.setattr(execution, "request_generation", fake_same_chat_generation)
+    monkeypatch.setattr(execution, "request_edit", fake_edit)
+    monkeypatch.setattr(execution, "_download_image_bytes", lambda url: (b"original-bytes", "image/png"))
+    monkeypatch.setattr(execution, "_image_digest", lambda url: "a" * 64 if "orig" in url else "b" * 64)
+
+    ctx = SimpleNamespace(
+        setting=lambda key: {"quality_gate": 0, "quality_threshold": 8}[key],
+        upstream=lambda acc: "http://127.0.0.1:41000",
+    )
+    body, meta = execution._apply_quality_gate(
+        ctx, {"api_secret": "x"}, "p", "conv-1", None,
+        {"data": [{"url": "http://127.0.0.1:41000/images/orig.png"}]},
+        {"n": 1}, "http://127.0.0.1:41000/v1/images/generations", "extended", 1, rounds=1,
+    )
+    assert meta["refine_method"] == "edit"
+    assert meta["refined"] is True
+    assert body["data"][0]["url"].endswith("edited.png")
+    assert any("edited-chat" in str(p.get("conversation_url", "")) for p in payloads)
+
+
+def test_text_overlay_extracts_only_explicit_literals():
+    from hub import text_overlay
+
+    prompt = (
+        'A banner with «کد پیگیری ۷۳۹۲-الف» and "INV-2026/0042". '
+        "Headline: «آزمون کیفیت ۱۵»\nFooter: «تلفن: ۰۹۱۲۳۴۵۶۷۸۹»"
+    )
+    literals = text_overlay.extract_literals(prompt)
+    assert len(literals) == 4, literals
+    assert all("«" not in item and "and" != item for item in literals)
+    assert "INV-2026/0042" in literals
+    guided = text_overlay.no_text_guidance(prompt, literals)
+    assert "NO text" in guided and "Do NOT attempt to render them" in guided
+
+
+def test_text_overlay_renders_exact_literal_bytes(loaded):
+    import base64
+    import io
+
+    from hub import text_overlay
+    from PIL import Image
+
+    image = Image.new("RGB", (900, 500), (12, 24, 48))
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    raw = buffer.getvalue()
+    literal = "کد پیگیری ۷۳۹۲-الف"
+    out = text_overlay.render(raw, [literal])
+    assert out != raw
+    composed = Image.open(io.BytesIO(out))
+    assert composed.size == (900, 500)
+    # Deterministic: the same literal always produces the same pixels.
+    assert text_overlay.render(raw, [literal]) == out
+
+
+def test_generation_request_accepts_text_overlay(loaded):
+    from helpers import auth
+
+    client, _ = loaded
+    headers = auth(client)
+    account = client.post(
+        "/api/accounts", json={"name": "Overlay", "autostart": False}, headers=headers
+    ).json()
+    created = client.post(
+        "/api/generate",
+        headers=headers,
+        json={
+            "account_id": account["id"],
+            "prompt": "A banner with «EXACT-42»",
+            "text_overlay": True,
+            "quality_rounds": 0,
+        },
+    )
+    assert created.status_code == 202
+    job = client.get("/api/jobs/" + created.json()["id"]).json()
+    assert bool(job["text_overlay"]) is True
+    conflict = client.post(
+        "/api/generate",
+        headers=headers,
+        json={
+            "account_id": account["id"],
+            "prompt": "A banner with «EXACT-42»",
+            "text_overlay": False,
+            "idempotency_key": "overlay-conflict-key",
+        },
+    )
+    assert conflict.status_code == 202

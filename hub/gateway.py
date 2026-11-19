@@ -84,3 +84,25 @@ def request_chat(
     return SimpleNamespace(
         status_code=response.status_code, headers=dict(response.headers), data=data
     )
+
+
+def request_edit(url, secret, image_bytes, mime, filename, prompt, n=1,
+                 thinking_mode=None, timeout=720.0):
+    """POST an image edit (multipart) to the gateway: primary image + prompt."""
+    data = {"prompt": prompt, "n": str(n), "response_format": "url"}
+    if thinking_mode:
+        data["thinking_mode"] = thinking_mode
+    with httpx.Client(
+        trust_env=False, timeout=httpx.Timeout(read=timeout, connect=10, write=120)
+    ) as client:
+        response = client.post(
+            url,
+            headers={"Authorization": "Bearer " + secret},
+            data=data,
+            files={"image": (filename, image_bytes, mime)},
+        )
+        try:
+            body = response.json()
+        except ValueError:
+            body = None
+    return SimpleNamespace(status_code=response.status_code, headers={}, data=body)

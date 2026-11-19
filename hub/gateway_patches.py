@@ -22,6 +22,7 @@ PATCH_ORDER = (
     "_patch_fast_prompt_insert",
     "_patch_quality_gate",
     "_patch_quality_gate_v2",
+    "_patch_refine_no_stale_extract",
 )
 
 PATCH_MARKERS = {
@@ -636,6 +637,89 @@ def _patch_quality_gate_v2(worker):
         chatgpt_path.write_text(content, encoding="utf-8")
         route_path.write_text(route, encoding="utf-8")
     return changed
+
+
+REFINE_NO_STALE_MARKER = "ninja:refine-no-stale-extract"
+REFINE_NO_STALE_JS = _asset("refine_no_stale_extract.js")
+
+
+def _patch_refine_no_stale_extract(worker):
+    """A reused chat already shows the previous image.
+
+    The upstream extraction fell back to "last image in DOM" when it saw no NEW container.
+    In reuse mode that is the OLD image, so a refinement looked successful while returning
+    identical bytes. Reuse mode now waits for a genuinely new container and otherwise
+    raises ``no_new_image`` (the Hub then performs a real image edit). Fresh chats keep the
+    historical fallback.
+    """
+    chatgpt_path = pathlib.Path(worker) / "src" / "chatgpt.js"
+    route_path = pathlib.Path(worker) / "src" / "routes" / "images.js"
+    if not chatgpt_path.is_file() or not route_path.is_file():
+        return False
+    content = chatgpt_path.read_text(encoding="utf-8")
+    route = route_path.read_text(encoding="utf-8")
+    if REFINE_NO_STALE_MARKER in content:
+        return False
+
+    context_re = re.compile(
+        r"  const result = await waitAndExtractImage\(p, beforeState, \{\n"
+        r"    prompt,\n"
+        r"    thinkingMode: thinkingState\.mode \|\| thinkingMode,\n"
+        r"    refs: (referencesConfirmed|referencesAttached),\n"
+        r"  \}\);"
+    )
+
+    def add_reuse(match):
+        block = match.group(0)
+        refs = match.group(1)
+        return block.replace(
+            f"    refs: {refs},",
+            f"    refs: {refs},\n    reuseChat: !!options.reuseChat,",
+        )
+
+    content, replaced = context_re.subn(add_reuse, content)
+    if replaced != 2:
+        return False
+
+    if content.count("  const newImageId = newImageIds.length > 0") != 1:
+        return False
+    content = content.replace(
+        "  const newImageId = newImageIds.length > 0",
+        "  let newImageId = newImageIds.length > 0",
+        1,
+    )
+
+    fallback_re = re.compile(
+        r"  \} else \{\n"
+        r"    console\.log\('\[extract\] No new image container found vs beforeState[^\n]*\n"
+        r"  \}"
+    )
+    content, replaced = fallback_re.subn(REFINE_NO_STALE_JS.rstrip(), content)
+    if replaced != 1:
+        return False
+    if REFINE_NO_STALE_MARKER not in content:
+        return False
+    chatgpt_path.write_text(content, encoding="utf-8")
+
+    edits_start = route.find("router.post('/v1/images/edits'")
+    edits_end = route.find("function normalizeMessageContent")
+    if edits_start == -1 or edits_end <= edits_start:
+        return False
+    segment = route[edits_start:edits_end]
+    anchor = "        ab_selected_index: applied.ab_selected_index || null,\n      },"
+    if anchor not in segment:
+        return False
+    if "conversation_url: result.conversationUrl" not in segment:
+        segment = segment.replace(
+            anchor,
+            "        ab_selected_index: applied.ab_selected_index || null,\n"
+            "        conversation_url: result.conversationUrl || null,\n"
+            "      },",
+            1,
+        )
+        route = route[:edits_start] + segment + route[edits_end:]
+        route_path.write_text(route, encoding="utf-8")
+    return True
 
 
 def apply_worker_patches(worker):

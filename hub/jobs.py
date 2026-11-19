@@ -61,6 +61,8 @@ def queue_image(ctx, body: GenerateBody):
                                 != (body.upload_id or None),
                                 (existing["quality_rounds"] or 0)
                                 != body.quality_rounds,
+                                bool(existing["text_overlay"] or 0)
+                                != bool(body.text_overlay),
                             )
                         ):
                             raise HTTPException(
@@ -96,6 +98,7 @@ def queue_image(ctx, body: GenerateBody):
                             idempotency_key=body.idempotency_key,
                             reference_upload_id=body.upload_id,
                             quality_rounds=body.quality_rounds,
+                            text_overlay=int(bool(body.text_overlay)),
                             reference_count=int((upload or {}).get("count") or 0)
                             or None,
                             status="queued",
@@ -200,6 +203,7 @@ def serialize_job(ctx, row, agent=False, image_rows=None):
             "quality_score",
             "quality_verdict",
             "quality_rounds",
+            "text_overlay",
             "quality_meta",
             "reference_upload_id",
             "reference_count",

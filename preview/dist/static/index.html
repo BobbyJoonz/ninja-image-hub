@@ -803,6 +803,16 @@
                     <option value="2">2 rounds — review + up to 2 repairs</option>
                     <option value="3">3 rounds — review + up to 3 repairs</option>
                   </select>
+                  <label class="check-line" for="textOverlay">
+                    <input type="checkbox" id="textOverlay" />
+                    Guaranteed text (typeset exactly after generation)
+                  </label>
+                  <p class="fine-print">
+                    The model generates the artwork without text; the exact strings from
+                    your prompt («quoted», or Label: value) are rendered with a real Persian
+                    font. This is the only mode where text correctness is guaranteed.
+                  </p>
+
                   <p class="fine-print">
                     Quality Loop hands the generated image back to ChatGPT in the
                     <strong>same chat</strong>, scores text/numbers strictly (a single

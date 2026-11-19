@@ -39,6 +39,7 @@ export function initGenerate() {
       aspect_ratio: S.ratio,
       quality_preference: $("qualityPreference").value,
       quality_rounds: Number($("qualityRounds").value || 0),
+      text_overlay: $("textOverlay").checked,
       n: Number($("genCount").value),
     };
     const fileSignature = S.referenceFiles
