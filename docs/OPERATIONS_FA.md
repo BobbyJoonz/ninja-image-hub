@@ -579,6 +579,38 @@ python scripts/resolve_unknown.py --password ... --resolution not_delivered \
 - **۲۴–۴۸ ساعت auto-login**: نیاز به گذشت زمان؛ فقط رفتار کوتاه‌مدت دیده شده.
 - **timerهای لینوکس**: فایل‌های systemd آماده‌اند ولی روی این ماشین (Windows) فعال نشده‌اند.
 
+
+
+## نوسان موقتی session / شبکه (رفتار واقعی و hanya-handling)
+
+### علت `session: unverified` لحظهای
+وقتی worker تازه استارت میشود، gauge `gpt_web_gateway_session_valid` از 0 شروع میشود تا اولینprobe موفق (warm-up). در این پنجره (معمولاً ۵–۲۰ ثانیه) پنل `unverified` نشان میدهد. **این به معنای منقضی شدن سسن نیست.**
+
+محافظتهای موجود ( نیاز به پچ جدید ندارد):
+- `unknown`probeها gauge را پایین نمیآورند.
+- flapping guard: دو negative متوالی لازم است تا gauge به 0 برود.
+- warm-up موقع استارت، قبل از اولین Job، سسن راrellogin میکند.
+- **تست عملی**: Job بلافاصله بعد از restart (با session=unverified) ارسال شد؛ Job در ۲۲ ثانیه دید `session: connected` و در ۱۴۹ ثانیه `completed` — یعنی پنجرهٔ unverified عملاً Job را خراب نمیکند.
+
+### خطاهای موقتی شبکه (`ERR_INTERNET_DISCONNECTED` / `ERR_NAME_NOT_RESOLVED`)
+اگر میزبان موقتاً ابترنت را از دست بدهد:
+- Gateway `page_load_failed` برمیگرداند (یک خطای **قطعیpre-send**: هیچ پرامپتی ارسال نشده).
+- Hub Job را `failed` با دلیل واضح علامتها میزند **و retry-automatic نمیکند** (قانون پروژه: upstream-uncertain هرگز تکرار نمیشود).
+- با برگشتnetwork،下一个 Job عادی完成 میشود — نیاز به دخالت دستی نیست.
+- اگر Job به `unknown` رفت (پاسخ ناقص/timeout)، آنرا با `scripts/resolve_unknown.py --yes` reconciliation کن؛ هرگز تکرار خودکار نشود.
+
+### اپراتور چه ببیند / چه کند؟
+| مشاهده | معنی | اقدام |
+|---|---|---|
+| `unverified` چند ثانیهای بعد از start | gauge در انتظارwarm-up | None — صبر کن |
+| `unverified` + `session_blocker: device_verification` | OpenAI verification خواسته | `/login` دستی ( Auto-login پچ v5 دکمهٔ password path را میزند) |
+| `failed` + `page_load_failed: ERR_INTERNET_DISCONNECTED` | قطعی موقتی شبکهhost | Job دوباره ثبت کن (پرامپت ارسال نشده) |
+| `unknown` + timeout | نتیجه مبهم upstream | `resolve_unknown.py` (فقط با --yes) |
+
+### تنظیمات مربوطه
+- `max_running_accounts` = **3** (تا هر سه اکانت همزمان online شوند).
+- worker policy: on-demand — اکانت بیکار بعد از ۲۰ دقیقه متوقف میشود (طبیعی). Job بعدی آنرا بیدار میکند.
+
 ## Quality Loop — بازبینی و اصلاح هوشمند (قابل انتخاب موقع تولید)
 
 **Quality Loop** همان گیت کیفیت است که حالا به‌صورت **انتخاب per-job در Image Studio** هم در دسترس است:
