@@ -29,6 +29,8 @@ PATCH_ORDER = (
     "_patch_password_fallback_v4",
     "_patch_password_fallback_v5",
     "_patch_totp_all_frames",
+    "_patch_password_fallback_v6",
+    "_patch_password_fallback_v7",
 )
 
 PATCH_MARKERS = {
@@ -973,6 +975,127 @@ def _patch_totp_all_frames(worker):
         1,
     )
     if TOTP_ALL_FRAMES_MARKER not in content:
+        return False
+    path.write_text(content, encoding="utf-8")
+    return True
+
+
+PASSWORD_FALLBACK_V6_MARKER = "ninja:password-fallback-v6"
+
+
+def _patch_password_fallback_v6(worker):
+    """Remove duplicate password-fallback helpers/calls; keep exactly one of each."""
+    path = pathlib.Path(worker) / "src" / "auto-login.js"
+    if not path.is_file():
+        return False
+    content = path.read_text(encoding="utf-8")
+    if PASSWORD_FALLBACK_V6_MARKER in content:
+        return False
+
+    # 1) Remove ALL helper defs (with their leading ninja comments), including v5.
+    helper_re = re.compile(
+        r"\n?// ninja:password-fallback[^\n]*\n"
+        r"async function clickContinueWithPassword\([^)]*\) \{[\s\S]*?\n\}\n"
+    )
+    content, removed_helpers = helper_re.subn("\n", content)
+
+    # 2) Remove ALL call lines and their ninja comments near the password step.
+    call_re = re.compile(
+        r"^[ \t]*// ninja:password-fallback[^\n]*\n"
+        r"(?:[ \t]*//[^\n]*\n)*"
+        r"[ \t]*await clickContinueWithPassword\(page[^\n]*\);\n",
+        re.MULTILINE,
+    )
+    content, removed_calls = call_re.subn("", content)
+    # Any bare calls left without a comment (defensive).
+    content = re.sub(
+        r"^[ \t]*await clickContinueWithPassword\(page[^\n]*\);\n",
+        "",
+        content,
+        flags=re.MULTILINE,
+    )
+
+    # 3) Re-add exactly one helper (v5 implementation) before autoLogin.
+    anchor = "async function autoLogin("
+    if anchor not in content:
+        return False
+    content = content.replace(
+        anchor, PASSWORD_FALLBACK_V5_JS.rstrip() + "\n\n" + anchor, 1
+    )
+    # 4) Re-add exactly one call at the password step.
+    step = "    await step(page, 'password-field', async () => {\n"
+    if content.count(step) != 1:
+        return False
+    content = content.replace(
+        step,
+        step
+        + "      // ninja:password-fallback-v6 — single password-path fallback\n"
+        + "      await clickContinueWithPassword(page, FIELD_TIMEOUT_MS);\n",
+        1,
+    )
+    if PASSWORD_FALLBACK_V6_MARKER not in content:
+        # v5 JS already has its own marker; add v6 marker to the call comment.
+        content = content.replace(
+            "// ninja:password-fallback-v6 — single password-path fallback",
+            "// ninja:password-fallback-v6 — single password-path fallback",
+            1,
+        )
+    path.write_text(content, encoding="utf-8")
+    return True
+
+
+PASSWORD_FALLBACK_V7_MARKER = "ninja:password-fallback-v7"
+
+
+def _patch_password_fallback_v7(worker):
+    """Collapse all password-fallback helpers/calls; handle multi-line comment blocks."""
+    path = pathlib.Path(worker) / "src" / "auto-login.js"
+    if not path.is_file():
+        return False
+    content = path.read_text(encoding="utf-8")
+    if PASSWORD_FALLBACK_V7_MARKER in content:
+        return False
+    before_defs = content.count("async function clickContinueWithPassword")
+    before_calls = content.count("await clickContinueWithPassword(page")
+
+    helper_re = re.compile(
+        r"\n?// ninja:password-fallback[^\n]*\n"
+        r"(?://[^\n]*\n)*"
+        r"async function clickContinueWithPassword\([^)]*\) \{[\s\S]*?\n\}\n"
+    )
+    content, _ = helper_re.subn("\n", content)
+
+    call_re = re.compile(
+        r"^[ \t]*// ninja:password-fallback[^\n]*\n"
+        r"(?:[ \t]*//[^\n]*\n)*"
+        r"[ \t]*await clickContinueWithPassword\(page[^\n]*\);\n",
+        re.MULTILINE,
+    )
+    content, _ = call_re.subn("", content)
+    content = re.sub(
+        r"^[ \t]*await clickContinueWithPassword\(page[^\n]*\);\n",
+        "", content, flags=re.MULTILINE,
+    )
+
+    anchor = "async function autoLogin("
+    if anchor not in content or content.count(anchor) != 1:
+        return False
+    content = content.replace(
+        anchor, PASSWORD_FALLBACK_V5_JS.rstrip() + "\n\n" + anchor, 1
+    )
+    step = "    await step(page, 'password-field', async () => {\n"
+    if content.count(step) != 1:
+        return False
+    content = content.replace(
+        step,
+        step
+        + "      // ninja:password-fallback-v7 — one password-path fallback\n"
+        + "      await clickContinueWithPassword(page, FIELD_TIMEOUT_MS);\n",
+        1,
+    )
+    after_defs = content.count("async function clickContinueWithPassword")
+    after_calls = content.count("await clickContinueWithPassword(page")
+    if after_defs != 1 or after_calls != 1:
         return False
     path.write_text(content, encoding="utf-8")
     return True
